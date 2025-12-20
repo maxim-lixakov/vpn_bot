@@ -25,10 +25,10 @@ func NewStateRepo(db *sql.DB) StateRepoInterface { return &StateRepo{db: db} }
 
 func (r *StateRepo) EnsureDefault(ctx context.Context, userID int64, defaultState string) (UserState, error) {
 	row := r.db.QueryRowContext(ctx, `
-		INSERT INTO user_states(user_id, router, updated_at)
+		INSERT INTO user_states(user_id, state, updated_at)
 		VALUES ($1, $2, now())
 		ON CONFLICT (user_id) DO NOTHING
-		RETURNING user_id, router, selected_country, updated_at
+		RETURNING user_id, state, selected_country, updated_at
 	`, userID, defaultState)
 
 	var st UserState
@@ -43,7 +43,7 @@ func (r *StateRepo) EnsureDefault(ctx context.Context, userID int64, defaultStat
 
 func (r *StateRepo) Get(ctx context.Context, userID int64) (UserState, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT user_id, router, selected_country, updated_at
+		SELECT user_id, state, selected_country, updated_at
 		FROM user_states WHERE user_id=$1
 	`, userID)
 
@@ -57,7 +57,7 @@ func (r *StateRepo) Get(ctx context.Context, userID int64) (UserState, error) {
 func (r *StateRepo) Set(ctx context.Context, userID int64, state string, selectedCountry sql.NullString) (UserState, error) {
 	row := r.db.QueryRowContext(ctx, `
 		UPDATE user_states
-		SET router=$2, selected_country=$3, updated_at=now()
+		SET state=$2, selected_country=$3, updated_at=now()
 		WHERE user_id=$1
 		RETURNING user_id, router, selected_country, updated_at
 	`, userID, state, selectedCountry)
