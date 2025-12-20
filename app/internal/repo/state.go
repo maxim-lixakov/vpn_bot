@@ -15,7 +15,13 @@ type UserState struct {
 
 type StateRepo struct{ db *sql.DB }
 
-func NewStateRepo(db *sql.DB) *StateRepo { return &StateRepo{db: db} }
+type StateRepoInterface interface {
+	EnsureDefault(ctx context.Context, userID int64, defaultState string) (UserState, error)
+	Get(ctx context.Context, userID int64) (UserState, error)
+	Set(ctx context.Context, userID int64, state string, selectedCountry sql.NullString) (UserState, error)
+}
+
+func NewStateRepo(db *sql.DB) StateRepoInterface { return &StateRepo{db: db} }
 
 func (r *StateRepo) EnsureDefault(ctx context.Context, userID int64, defaultState string) (UserState, error) {
 	row := r.db.QueryRowContext(ctx, `
