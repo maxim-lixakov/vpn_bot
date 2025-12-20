@@ -5,10 +5,10 @@ import (
 	"log"
 	"net/http"
 	"time"
+	"vpn-app/internal/handlers"
 
 	"vpn-app/internal/config"
 	"vpn-app/internal/db"
-	"vpn-app/internal/httpapi"
 	"vpn-app/internal/migrations"
 )
 
@@ -30,7 +30,7 @@ func main() {
 		log.Fatal("migrations: ", err)
 	}
 
-	srv := httpapi.New(cfg, pg)
+	srv := handlers.New(cfg, pg)
 
 	log.Printf("app listening on %s", cfg.Addr)
 	if err := http.ListenAndServe(cfg.Addr, srv.Router()); err != nil {
