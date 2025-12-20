@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"log"
-	"net/http"
 	"time"
-	"vpn-app/internal/handlers"
+
+	"net/http"
 
 	"vpn-app/internal/config"
 	"vpn-app/internal/db"
+	"vpn-app/internal/handlers"
 	"vpn-app/internal/migrations"
 )
 
