@@ -14,16 +14,16 @@ type Server struct {
 	cfg config.Config
 	db  *sql.DB
 
-	users  *repo.UsersRepo
-	states *repo.StateRepo
-	subs   *repo.SubscriptionsRepo
-	keys   *repo.AccessKeysRepo
+	users  repo.UsersRepoInterface
+	states repo.StateRepoInterface
+	subs   repo.SubscriptionsRepoInterface
+	keys   repo.AccessKeysRepoInterface
 
-	clients map[string]*outline.Client
+	clients map[string]outline.OutlineClientInterface
 }
 
 func New(cfg config.Config, db *sql.DB) *Server {
-	clients := make(map[string]*outline.Client, len(cfg.Servers))
+	clients := make(map[string]outline.OutlineClientInterface, len(cfg.Servers))
 	for code, s := range cfg.Servers {
 		clients[code] = outline.NewClient(s.APIURL, s.TLSInsecure)
 	}

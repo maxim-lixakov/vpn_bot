@@ -18,7 +18,12 @@ type AccessKey struct {
 
 type AccessKeysRepo struct{ db *sql.DB }
 
-func NewAccessKeysRepo(db *sql.DB) *AccessKeysRepo { return &AccessKeysRepo{db: db} }
+type AccessKeysRepoInterface interface {
+	GetActive(ctx context.Context, userID int64, country string) (AccessKey, bool, error)
+	Insert(ctx context.Context, userID int64, country, outlineKeyID, accessURL string) error
+}
+
+func NewAccessKeysRepo(db *sql.DB) AccessKeysRepoInterface { return &AccessKeysRepo{db: db} }
 
 func (r *AccessKeysRepo) GetActive(ctx context.Context, userID int64, country string) (AccessKey, bool, error) {
 	row := r.db.QueryRowContext(ctx, `

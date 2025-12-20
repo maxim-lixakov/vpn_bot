@@ -14,10 +14,22 @@ import (
 
 type Client struct {
 	baseURL string
-	hc      *http.Client
+	hc      HttpClient
 }
 
-func NewClient(baseURL string, tlsInsecure bool) *Client {
+type HttpClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+type OutlineClientInterface interface {
+	CreateAccessKey(ctx context.Context, name string) (AccessKey, error)
+	DeleteAccessKey(ctx context.Context, id string) error
+	MetricsTransfer(ctx context.Context) (map[string]int64, error)
+	RemoveAccessKeyDataLimit(ctx context.Context, id string) error
+	SetAccessKeyDataLimit(ctx context.Context, id string, bytesLimit int64) error
+}
+
+func NewClient(baseURL string, tlsInsecure bool) OutlineClientInterface {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: tlsInsecure}, // MVP only
 	}

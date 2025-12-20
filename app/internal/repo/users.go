@@ -20,7 +20,12 @@ type User struct {
 
 type UsersRepo struct{ db *sql.DB }
 
-func NewUsersRepo(db *sql.DB) *UsersRepo { return &UsersRepo{db: db} }
+type UsersRepoInterface interface {
+	UpsertByTelegram(ctx context.Context, u User) (User, error)
+	GetByTelegramID(ctx context.Context, tgUserID int64) (User, bool, error)
+}
+
+func NewUsersRepo(db *sql.DB) UsersRepoInterface { return &UsersRepo{db: db} }
 
 func (r *UsersRepo) UpsertByTelegram(ctx context.Context, u User) (User, error) {
 	// update last_activity every time

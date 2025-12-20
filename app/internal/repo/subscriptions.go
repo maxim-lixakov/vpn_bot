@@ -8,7 +8,12 @@ import (
 
 type SubscriptionsRepo struct{ db *sql.DB }
 
-func NewSubscriptionsRepo(db *sql.DB) *SubscriptionsRepo { return &SubscriptionsRepo{db: db} }
+type SubscriptionsRepoInterface interface {
+	GetActiveUntil(ctx context.Context, userID int64, now time.Time) (time.Time, bool, error)
+	MarkPaid(ctx context.Context, args MarkPaidArgs) (activeUntil time.Time, err error)
+}
+
+func NewSubscriptionsRepo(db *sql.DB) SubscriptionsRepoInterface { return &SubscriptionsRepo{db: db} }
 
 func (r *SubscriptionsRepo) GetActiveUntil(ctx context.Context, userID int64, now time.Time) (time.Time, bool, error) {
 	row := r.db.QueryRowContext(ctx, `
