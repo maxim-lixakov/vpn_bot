@@ -5,7 +5,7 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"vpn-bot/internal/flows"
+	"vpn-bot/internal/countries"
 	"vpn-bot/internal/state"
 )
 
@@ -22,7 +22,7 @@ func (h Start) Handle(ctx context.Context, u tgbotapi.Update, s state.Session, d
 	_ = d.App.TelegramSetState(ctx, s.TgUserID, "CHOOSE_COUNTRY", nil)
 
 	msg := tgbotapi.NewMessage(s.ChatID, "Выбери страну сервера:")
-	msg.ReplyMarkup = flows.CountryKeyboard()
+	msg.ReplyMarkup = countries.CountryKeyboard()
 	_, err := d.Bot.Send(msg)
 	return err
 }

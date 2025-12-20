@@ -11,6 +11,7 @@ import (
 	"vpn-bot/internal/appclient"
 	"vpn-bot/internal/handlers"
 	"vpn-bot/internal/state"
+	"vpn-bot/internal/utils"
 )
 
 func main() {
@@ -24,11 +25,11 @@ func main() {
 
 	pcfg := state.PaymentsConfig{
 		ProviderToken: os.Getenv("PAYMENTS_PROVIDER_TOKEN"),
-		Currency:      getenv("PAYMENTS_CURRENCY", "RUB"),
-		PriceMinor:    mustInt64(getenv("PAYMENTS_PRICE_MINOR", "10000")),
-		Title:         getenv("PAYMENTS_TITLE", "Outline VPN"),
-		Description:   getenv("PAYMENTS_DESCRIPTION", "VPN subscription 1 month"),
-		Payload:       getenv("PAYMENTS_PAYLOAD", "subscription_v1"),
+		Currency:      utils.GetEnv("PAYMENTS_CURRENCY", "RUB"),
+		PriceMinor:    utils.MustInt64(utils.GetEnv("PAYMENTS_PRICE_MINOR", "10000")),
+		Title:         utils.GetEnv("PAYMENTS_TITLE", "Outline VPN"),
+		Description:   utils.GetEnv("PAYMENTS_DESCRIPTION", "VPN subscription 1 month"),
+		Payload:       utils.GetEnv("PAYMENTS_PAYLOAD", "subscription_v1"),
 	}
 
 	app := appclient.New(appBaseURL, internalToken)
@@ -131,29 +132,4 @@ func buildSession(ctx context.Context, upd tgbotapi.Update, app *appclient.Clien
 		SelectedCountry: resp.SelectedCountry,
 		SubscriptionOK:  resp.SubscriptionOK,
 	}, true
-}
-
-func getenv(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
-}
-
-func mustInt64(s string) int64 {
-	var n int64
-	var sign int64 = 1
-	i := 0
-	if len(s) > 0 && s[0] == '-' {
-		sign = -1
-		i++
-	}
-	for ; i < len(s); i++ {
-		c := s[i]
-		if c < '0' || c > '9' {
-			break
-		}
-		n = n*10 + int64(c-'0')
-	}
-	return n * sign
 }
