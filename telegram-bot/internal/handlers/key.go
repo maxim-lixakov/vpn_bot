@@ -6,14 +6,14 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"vpn-bot/internal/state"
+	"vpn-bot/internal/router"
 )
 
 type KeyIssuer struct{}
 
 func (h KeyIssuer) Name() string { return "key" }
 
-func (h KeyIssuer) CanHandle(u tgbotapi.Update, s state.Session) bool {
+func (h KeyIssuer) CanHandle(u tgbotapi.Update, s router.Session) bool {
 	// example: user writes "key" while in ISSUE_KEY
 	if u.Message != nil && s.State == "ISSUE_KEY" && !u.Message.IsCommand() {
 		return true
@@ -21,7 +21,7 @@ func (h KeyIssuer) CanHandle(u tgbotapi.Update, s state.Session) bool {
 	return false
 }
 
-func (h KeyIssuer) Handle(ctx context.Context, u tgbotapi.Update, s state.Session, d state.Deps) error {
+func (h KeyIssuer) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
 	if s.SelectedCountry == nil {
 		_, err := d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не выбрана страна. Нажми /start"))
 		return err

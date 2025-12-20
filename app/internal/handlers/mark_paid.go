@@ -51,7 +51,7 @@ func (s *Server) handleTelegramMarkPaid(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// move state to ISSUE_KEY (selected_country remains as-is)
+	// move router to ISSUE_KEY (selected_country remains as-is)
 	st, err := s.states.Get(r.Context(), user.ID)
 	if err == nil {
 		_ = func() error {

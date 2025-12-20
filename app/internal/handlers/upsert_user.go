@@ -22,7 +22,7 @@ type tgUpsertReq struct {
 
 type tgUpsertResp struct {
 	UserID          int64      `json:"user_id"`
-	State           string     `json:"state"`
+	State           string     `json:"router"`
 	SelectedCountry *string    `json:"selected_country"`
 	SubscriptionOK  bool       `json:"subscription_ok"`
 	ActiveUntil     *time.Time `json:"active_until"`

@@ -7,21 +7,21 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"vpn-bot/internal/appclient"
-	"vpn-bot/internal/state"
+	"vpn-bot/internal/router"
 )
 
 type CountryChosen struct{}
 
 func (h CountryChosen) Name() string { return "country" }
 
-func (h CountryChosen) CanHandle(u tgbotapi.Update, s state.Session) bool {
+func (h CountryChosen) CanHandle(u tgbotapi.Update, s router.Session) bool {
 	if u.CallbackQuery == nil {
 		return false
 	}
 	return strings.HasPrefix(u.CallbackQuery.Data, "country:")
 }
 
-func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s state.Session, d state.Deps) error {
+func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
 	country := strings.TrimPrefix(u.CallbackQuery.Data, "country:")
 	if _, err := d.Bot.Request(tgbotapi.NewCallback(u.CallbackQuery.ID, "Готово")); err != nil {
 		// можно залогировать
@@ -41,7 +41,7 @@ func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s state.Se
 		})
 
 		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Оплата временно пропущена (dev mode). Выдаю ключ…"))
-		// важно: state.SelectedCountry в Session ещё старый, поэтому сформируй новую сессию локально:
+		// важно: router.SelectedCountry в Session ещё старый, поэтому сформируй новую сессию локально:
 		ss := s
 		ss.SelectedCountry = &country
 		return issueKeyNow(ctx, ss, d)

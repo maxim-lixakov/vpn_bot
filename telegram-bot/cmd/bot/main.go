@@ -10,7 +10,7 @@ import (
 
 	"vpn-bot/internal/appclient"
 	"vpn-bot/internal/handlers"
-	"vpn-bot/internal/state"
+	stateRouter "vpn-bot/internal/router"
 	"vpn-bot/internal/utils"
 )
 
@@ -23,7 +23,7 @@ func main() {
 		log.Fatal("BOT_TOKEN, APP_BASE_URL, APP_INTERNAL_TOKEN are required")
 	}
 
-	pcfg := state.PaymentsConfig{
+	pcfg := stateRouter.PaymentsConfig{
 		ProviderToken: os.Getenv("PAYMENTS_PROVIDER_TOKEN"),
 		Currency:      utils.GetEnv("PAYMENTS_CURRENCY", "RUB"),
 		PriceMinor:    utils.MustInt64(utils.GetEnv("PAYMENTS_PRICE_MINOR", "10000")),
@@ -40,7 +40,7 @@ func main() {
 	}
 	log.Printf("bot authorized as @%s", bot.Self.UserName)
 
-	router := state.NewRouter(
+	router := stateRouter.NewRouter(
 		handlers.Start{},
 		handlers.CountryChosen{},
 		handlers.PaymentFlow{},
@@ -51,10 +51,10 @@ func main() {
 	u.Timeout = 30
 	updates := bot.GetUpdatesChan(u)
 
-	deps := state.Deps{
+	deps := stateRouter.Deps{
 		App: app,
 		Bot: bot,
-		Cfg: state.Config{Payments: pcfg},
+		Cfg: stateRouter.Config{Payments: pcfg},
 	}
 
 	for upd := range updates {
@@ -74,7 +74,7 @@ func main() {
 	}
 }
 
-func buildSession(ctx context.Context, upd tgbotapi.Update, app *appclient.Client) (state.Session, bool) {
+func buildSession(ctx context.Context, upd tgbotapi.Update, app *appclient.Client) (stateRouter.Session, bool) {
 	var (
 		tgID   int64
 		chatID int64
@@ -95,7 +95,7 @@ func buildSession(ctx context.Context, upd tgbotapi.Update, app *appclient.Clien
 		chatID = upd.PreCheckoutQuery.From.ID // fallback; precheckout doesn't have chat id always in lib
 		user = upd.PreCheckoutQuery.From
 	default:
-		return state.Session{}, false
+		return stateRouter.Session{}, false
 	}
 
 	req := appclient.TelegramUpsertReq{
@@ -122,10 +122,10 @@ func buildSession(ctx context.Context, upd tgbotapi.Update, app *appclient.Clien
 
 	resp, err := app.TelegramUpsert(ctx, req)
 	if err != nil {
-		return state.Session{}, false
+		return stateRouter.Session{}, false
 	}
 
-	return state.Session{
+	return stateRouter.Session{
 		TgUserID:        tgID,
 		ChatID:          chatID,
 		State:           resp.State,

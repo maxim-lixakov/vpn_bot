@@ -12,7 +12,11 @@ import (
 type Client struct {
 	baseURL string
 	token   string
-	hc      *http.Client
+	hc      HttpClientInterface
+}
+
+type HttpClientInterface interface {
+	Do(req *http.Request) (*http.Response, error)
 }
 
 func New(baseURL, token string) *Client {

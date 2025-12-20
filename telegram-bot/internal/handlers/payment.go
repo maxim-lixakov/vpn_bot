@@ -8,14 +8,14 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"vpn-bot/internal/appclient"
-	"vpn-bot/internal/state"
+	"vpn-bot/internal/router"
 )
 
 type PaymentFlow struct{}
 
 func (h PaymentFlow) Name() string { return "payment" }
 
-func (h PaymentFlow) CanHandle(u tgbotapi.Update, s state.Session) bool {
+func (h PaymentFlow) CanHandle(u tgbotapi.Update, s router.Session) bool {
 	// 1) pre-checkout query
 	if u.PreCheckoutQuery != nil {
 		return true
@@ -31,7 +31,7 @@ func (h PaymentFlow) CanHandle(u tgbotapi.Update, s state.Session) bool {
 	return false
 }
 
-func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s state.Session, d state.Deps) error {
+func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
 	// pre-checkout: must answer ok
 	if u.PreCheckoutQuery != nil {
 		pc := tgbotapi.PreCheckoutConfig{
@@ -101,7 +101,7 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s state.Sess
 	return nil
 }
 
-func issueKeyNow(ctx context.Context, s state.Session, d state.Deps) error {
+func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 	resp, err := d.App.IssueKey(ctx, s.TgUserID, *s.SelectedCountry)
 	if err != nil {
 		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Ошибка выдачи ключа: "+err.Error()))

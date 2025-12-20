@@ -10,12 +10,12 @@ import (
 
 type tgSetStateReq struct {
 	TgUserID        int64   `json:"tg_user_id"`
-	State           string  `json:"state"`
+	State           string  `json:"router"`
 	SelectedCountry *string `json:"selected_country"`
 }
 
 type tgSetStateResp struct {
-	State           string  `json:"state"`
+	State           string  `json:"router"`
 	SelectedCountry *string `json:"selected_country"`
 }
 
