@@ -1,0 +1,159 @@
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"vpn-bot/internal/appclient"
+	"vpn-bot/internal/handlers"
+	"vpn-bot/internal/state"
+)
+
+func main() {
+	botToken := os.Getenv("BOT_TOKEN")
+	appBaseURL := os.Getenv("APP_BASE_URL")
+	internalToken := os.Getenv("APP_INTERNAL_TOKEN")
+
+	if botToken == "" || appBaseURL == "" || internalToken == "" {
+		log.Fatal("BOT_TOKEN, APP_BASE_URL, APP_INTERNAL_TOKEN are required")
+	}
+
+	pcfg := state.PaymentsConfig{
+		ProviderToken: os.Getenv("PAYMENTS_PROVIDER_TOKEN"),
+		Currency:      getenv("PAYMENTS_CURRENCY", "RUB"),
+		PriceMinor:    mustInt64(getenv("PAYMENTS_PRICE_MINOR", "10000")),
+		Title:         getenv("PAYMENTS_TITLE", "Outline VPN"),
+		Description:   getenv("PAYMENTS_DESCRIPTION", "VPN subscription 1 month"),
+		Payload:       getenv("PAYMENTS_PAYLOAD", "subscription_v1"),
+	}
+
+	app := appclient.New(appBaseURL, internalToken)
+
+	bot, err := tgbotapi.NewBotAPI(botToken)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("bot authorized as @%s", bot.Self.UserName)
+
+	router := state.NewRouter(
+		handlers.Start{},
+		handlers.CountryChosen{},
+		handlers.PaymentFlow{},
+		handlers.KeyIssuer{},
+	)
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 30
+	updates := bot.GetUpdatesChan(u)
+
+	deps := state.Deps{
+		App: app,
+		Bot: bot,
+		Cfg: state.Config{Payments: pcfg},
+	}
+
+	for upd := range updates {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+		sess, ok := buildSession(ctx, upd, app)
+		if !ok {
+			cancel()
+			continue
+		}
+
+		if err := router.Dispatch(ctx, upd, sess, deps); err != nil {
+			log.Printf("handle error: %v", err)
+		}
+
+		cancel()
+	}
+}
+
+func buildSession(ctx context.Context, upd tgbotapi.Update, app *appclient.Client) (state.Session, bool) {
+	var (
+		tgID   int64
+		chatID int64
+		user   *tgbotapi.User
+	)
+
+	switch {
+	case upd.Message != nil:
+		tgID = upd.Message.From.ID
+		chatID = upd.Message.Chat.ID
+		user = upd.Message.From
+	case upd.CallbackQuery != nil:
+		tgID = upd.CallbackQuery.From.ID
+		chatID = upd.CallbackQuery.Message.Chat.ID
+		user = upd.CallbackQuery.From
+	case upd.PreCheckoutQuery != nil:
+		tgID = upd.PreCheckoutQuery.From.ID
+		chatID = upd.PreCheckoutQuery.From.ID // fallback; precheckout doesn't have chat id always in lib
+		user = upd.PreCheckoutQuery.From
+	default:
+		return state.Session{}, false
+	}
+
+	req := appclient.TelegramUpsertReq{
+		TgUserID: tgID,
+	}
+	if user != nil {
+		if user.UserName != "" {
+			u := user.UserName
+			req.Username = &u
+		}
+		if user.FirstName != "" {
+			fn := user.FirstName
+			req.FirstName = &fn
+		}
+		if user.LastName != "" {
+			ln := user.LastName
+			req.LastName = &ln
+		}
+		if user.LanguageCode != "" {
+			lc := user.LanguageCode
+			req.LanguageCode = &lc
+		}
+	}
+
+	resp, err := app.TelegramUpsert(ctx, req)
+	if err != nil {
+		return state.Session{}, false
+	}
+
+	return state.Session{
+		TgUserID:        tgID,
+		ChatID:          chatID,
+		State:           resp.State,
+		SelectedCountry: resp.SelectedCountry,
+		SubscriptionOK:  resp.SubscriptionOK,
+	}, true
+}
+
+func getenv(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+func mustInt64(s string) int64 {
+	var n int64
+	var sign int64 = 1
+	i := 0
+	if len(s) > 0 && s[0] == '-' {
+		sign = -1
+		i++
+	}
+	for ; i < len(s); i++ {
+		c := s[i]
+		if c < '0' || c > '9' {
+			break
+		}
+		n = n*10 + int64(c-'0')
+	}
+	return n * sign
+}
