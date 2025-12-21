@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -18,18 +19,26 @@ func main() {
 	botToken := os.Getenv("BOT_TOKEN")
 	appBaseURL := os.Getenv("APP_BASE_URL")
 	internalToken := os.Getenv("APP_INTERNAL_TOKEN")
-
 	if botToken == "" || appBaseURL == "" || internalToken == "" {
 		log.Fatal("BOT_TOKEN, APP_BASE_URL, APP_INTERNAL_TOKEN are required")
 	}
 
 	pcfg := stateRouter.PaymentsConfig{
-		ProviderToken: os.Getenv("PAYMENTS_PROVIDER_TOKEN"),
+		ProviderToken: strings.TrimSpace(os.Getenv("PAYMENTS_PROVIDER_TOKEN")),
 		Currency:      utils.GetEnv("PAYMENTS_CURRENCY", "RUB"),
-		PriceMinor:    utils.MustInt64(utils.GetEnv("PAYMENTS_PRICE_MINOR", "10000")),
-		Title:         utils.GetEnv("PAYMENTS_TITLE", "Outline VPN"),
-		Description:   utils.GetEnv("PAYMENTS_DESCRIPTION", "VPN subscription 1 month"),
-		Payload:       utils.GetEnv("PAYMENTS_PAYLOAD", "subscription_v1"),
+
+		VPNPriceMinor:  utils.MustInt64(utils.GetEnv("PAYMENTS_VPN_PRICE_MINOR", "10000")),
+		VPNTtitle:      utils.GetEnv("PAYMENTS_VPN_TITLE", "Outline VPN"),
+		VPNDescription: utils.GetEnv("PAYMENTS_VPN_DESCRIPTION", "VPN subscription 1 month"),
+		VPNPayload:     utils.GetEnv("PAYMENTS_VPN_PAYLOAD", "vpn_sub_v1"),
+
+		NewCountryPriceMinor:  utils.MustInt64(utils.GetEnv("PAYMENTS_NEWCOUNTRY_PRICE_MINOR", "40000")),
+		NewCountryTitle:       utils.GetEnv("PAYMENTS_NEWCOUNTRY_TITLE", "Добавить новую страну"),
+		NewCountryDescription: utils.GetEnv("PAYMENTS_NEWCOUNTRY_DESCRIPTION", "Запрос на добавление новой страны"),
+		NewCountryPayload:     utils.GetEnv("PAYMENTS_NEWCOUNTRY_PAYLOAD", "new_country_v1"),
+
+		DevSkipVPNPayment:        strings.TrimSpace(os.Getenv("DEV_SKIP_VPN_PAYMENT")) == "true",
+		DevSkipNewCountryPayment: strings.TrimSpace(os.Getenv("DEV_SKIP_NEW_COUNTRY_PAYMENT")) == "true",
 	}
 
 	app := appclient.New(appBaseURL, internalToken)
@@ -42,13 +51,19 @@ func main() {
 
 	router := stateRouter.NewRouter(
 		handlers.Start{},
+		handlers.Menu{},
+		handlers.MySubscriptions{},
+		handlers.ChooseVPN{},
+		handlers.OrderNewCountry{},
 		handlers.CountryChosen{},
+		handlers.CountryRequestText{},
 		handlers.PaymentFlow{},
-		handlers.KeyIssuer{},
 	)
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30
+	u.AllowedUpdates = []string{"message", "callback_query", "pre_checkout_query"}
+
 	updates := bot.GetUpdatesChan(u)
 
 	deps := stateRouter.Deps{
@@ -60,16 +75,24 @@ func main() {
 	for upd := range updates {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
+		// всегда снимаем "loading"
+		if upd.CallbackQuery != nil {
+			_, _ = bot.Request(tgbotapi.NewCallback(upd.CallbackQuery.ID, ""))
+		}
+
 		sess, ok := buildSession(ctx, upd, app)
 		if !ok {
 			cancel()
 			continue
 		}
 
+		if upd.CallbackQuery != nil {
+			log.Printf("callback data=%q state=%q selected=%v", upd.CallbackQuery.Data, sess.State, sess.SelectedCountry)
+		}
+
 		if err := router.Dispatch(ctx, upd, sess, deps); err != nil {
 			log.Printf("handle error: %v", err)
 		}
-
 		cancel()
 	}
 }
@@ -88,19 +111,21 @@ func buildSession(ctx context.Context, upd tgbotapi.Update, app *appclient.Clien
 		user = upd.Message.From
 	case upd.CallbackQuery != nil:
 		tgID = upd.CallbackQuery.From.ID
-		chatID = upd.CallbackQuery.Message.Chat.ID
+		if upd.CallbackQuery.Message != nil {
+			chatID = upd.CallbackQuery.Message.Chat.ID
+		} else {
+			chatID = tgID
+		}
 		user = upd.CallbackQuery.From
 	case upd.PreCheckoutQuery != nil:
 		tgID = upd.PreCheckoutQuery.From.ID
-		chatID = upd.PreCheckoutQuery.From.ID // fallback; precheckout doesn't have chat id always in lib
+		chatID = tgID
 		user = upd.PreCheckoutQuery.From
 	default:
 		return stateRouter.Session{}, false
 	}
 
-	req := appclient.TelegramUpsertReq{
-		TgUserID: tgID,
-	}
+	req := appclient.TelegramUpsertReq{TgUserID: tgID}
 	if user != nil {
 		if user.UserName != "" {
 			u := user.UserName
@@ -122,13 +147,19 @@ func buildSession(ctx context.Context, upd tgbotapi.Update, app *appclient.Clien
 
 	resp, err := app.TelegramUpsert(ctx, req)
 	if err != nil {
+		log.Printf("TelegramUpsert failed: %v", err)
 		return stateRouter.Session{}, false
+	}
+
+	st := strings.TrimSpace(resp.Router)
+	if st == "" {
+		st = strings.TrimSpace(resp.State)
 	}
 
 	return stateRouter.Session{
 		TgUserID:        tgID,
 		ChatID:          chatID,
-		State:           resp.State,
+		State:           st,
 		SelectedCountry: resp.SelectedCountry,
 		SubscriptionOK:  resp.SubscriptionOK,
 	}, true

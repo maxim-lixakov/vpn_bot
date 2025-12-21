@@ -2,12 +2,11 @@ package handlers
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"vpn-bot/internal/appclient"
+	"vpn-bot/internal/menu"
 	"vpn-bot/internal/router"
 )
 
@@ -16,23 +15,10 @@ type PaymentFlow struct{}
 func (h PaymentFlow) Name() string { return "payment" }
 
 func (h PaymentFlow) CanHandle(u tgbotapi.Update, s router.Session) bool {
-	// 1) pre-checkout query
-	if u.PreCheckoutQuery != nil {
-		return true
-	}
-	// 2) successful payment appears in Message.SuccessfulPayment
-	if u.Message != nil && u.Message.SuccessfulPayment != nil {
-		return true
-	}
-	// 3) we can trigger invoice when user is in AWAIT_PAYMENT and writes anything like "pay"
-	if u.Message != nil && s.State == "AWAIT_PAYMENT" && !u.Message.IsCommand() {
-		return true
-	}
-	return false
+	return u.PreCheckoutQuery != nil || (u.Message != nil && u.Message.SuccessfulPayment != nil)
 }
 
 func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
-	// pre-checkout: must answer ok
 	if u.PreCheckoutQuery != nil {
 		pc := tgbotapi.PreCheckoutConfig{
 			PreCheckoutQueryID: u.PreCheckoutQuery.ID,
@@ -42,83 +28,71 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Ses
 		return err
 	}
 
-	// successful payment
-	if u.Message != nil && u.Message.SuccessfulPayment != nil {
-		sp := u.Message.SuccessfulPayment
+	sp := u.Message.SuccessfulPayment
+	payload := sp.InvoicePayload
 
-		req := appclient.TelegramMarkPaidReq{
-			TgUserID:                s.TgUserID,
-			AmountMinor:             int64(sp.TotalAmount),
-			Currency:                sp.Currency,
+	switch payload {
+	case d.Cfg.Payments.VPNPayload:
+		// must have selected country saved in session
+		if s.SelectedCountry == nil {
+			msg := tgbotapi.NewMessage(s.ChatID, "Не выбрана страна. Нажми /start")
+			msg.ReplyMarkup = menu.Keyboard()
+			_, _ = d.Bot.Send(msg)
+			return nil
+		}
+
+		_, err := d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
+			TgUserID:    s.TgUserID,
+			Kind:        "vpn",
+			CountryCode: s.SelectedCountry,
+			AmountMinor: int64(sp.TotalAmount),
+			Currency:    sp.Currency,
+
 			TelegramPaymentChargeID: sp.TelegramPaymentChargeID,
 			ProviderPaymentChargeID: sp.ProviderPaymentChargeID,
-		}
-
-		_, err := d.App.TelegramMarkPaid(ctx, req)
+		})
 		if err != nil {
-			_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Оплата получена, но не смог сохранить подписку: "+err.Error()))
+			msg := tgbotapi.NewMessage(s.ChatID, "Оплата получена, но не смог сохранить подписку: "+err.Error())
+			msg.ReplyMarkup = menu.Keyboard()
+			_, _ = d.Bot.Send(msg)
 			return nil
 		}
 
-		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Оплата успешна. Сейчас выдам ключ."))
-		if s.SelectedCountry == nil {
-			_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не выбрана страна. Нажми /start"))
-			return nil
-		}
+		msg := tgbotapi.NewMessage(s.ChatID, "Оплата успешна. Выдаю ключ…")
+		msg.ReplyMarkup = menu.Keyboard()
+		_, _ = d.Bot.Send(msg)
+
 		return issueKeyNow(ctx, s, d)
-	}
 
-	// send invoice
-	if d.Cfg.Payments.ProviderToken == "" {
-		_, err := d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Оплата не настроена (PAYMENTS_PROVIDER_TOKEN пустой)."))
-		return err
-	}
-	if s.SelectedCountry == nil {
-		_, err := d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Сначала выбери страну через /start"))
-		return err
-	}
+	case d.Cfg.Payments.NewCountryPayload:
+		_, err := d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
+			TgUserID:    s.TgUserID,
+			Kind:        "country_request",
+			CountryCode: nil,
+			AmountMinor: int64(sp.TotalAmount),
+			Currency:    sp.Currency,
 
-	price := tgbotapi.LabeledPrice{
-		Label:  "VPN 1 month",
-		Amount: int(d.Cfg.Payments.PriceMinor),
-	}
+			TelegramPaymentChargeID: sp.TelegramPaymentChargeID,
+			ProviderPaymentChargeID: sp.ProviderPaymentChargeID,
+		})
+		if err != nil {
+			msg := tgbotapi.NewMessage(s.ChatID, "Оплата получена, но не смог сохранить: "+err.Error())
+			msg.ReplyMarkup = menu.Keyboard()
+			_, _ = d.Bot.Send(msg)
+			return nil
+		}
 
-	inv := tgbotapi.NewInvoice(
-		s.ChatID,
-		d.Cfg.Payments.Title,
-		d.Cfg.Payments.Description+"\nCountry: "+*s.SelectedCountry,
-		d.Cfg.Payments.Payload,
-		d.Cfg.Payments.ProviderToken,
-		"",
-		d.Cfg.Payments.Currency,
-		[]tgbotapi.LabeledPrice{price},
-	)
+		_ = d.App.TelegramSetState(ctx, s.TgUserID, "AWAIT_COUNTRY_REQUEST_TEXT", nil)
 
-	_, err := d.Bot.Send(inv)
-	if err != nil {
-		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить invoice: "+err.Error()+" (price="+strconv.FormatInt(d.Cfg.Payments.PriceMinor, 10)+")"))
-	}
-	return nil
-}
-
-func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
-	resp, err := d.App.IssueKey(ctx, s.TgUserID, *s.SelectedCountry)
-	if err != nil {
-		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Ошибка выдачи ключа: "+err.Error()))
+		msg := tgbotapi.NewMessage(s.ChatID, "Какую страну ты бы хотел добавить?")
+		msg.ReplyMarkup = menu.Keyboard()
+		_, _ = d.Bot.Send(msg)
 		return nil
 	}
 
-	text := fmt.Sprintf("Сервер: %s\n\nКлюч:\n%s\n\n%s",
-		resp.ServerName, resp.AccessURL, "Скачать Outline Client:\n"+officialLinks(),
-	)
-	_, err = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, text))
-	return err
-}
-
-func officialLinks() string {
-	return "" +
-		"- Windows: https://s3.amazonaws.com/outline-releases/client/windows/stable/Outline-Client.exe\n" +
-		"- iOS: https://itunes.apple.com/us/app/outline-app/id1356177741\n" +
-		"- Android: https://play.google.com/store/apps/details?id=org.outline.android.client\n" +
-		"- Android (APK): https://s3.amazonaws.com/outline-releases/client/android/stable/Outline-Client.apk\n"
+	// неизвестный payload
+	msg := tgbotapi.NewMessage(s.ChatID, "Оплата получена, но payload не распознан.")
+	msg.ReplyMarkup = menu.Keyboard()
+	_, _ = d.Bot.Send(msg)
+	return nil
 }

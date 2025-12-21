@@ -21,10 +21,22 @@ type Config struct {
 type PaymentsConfig struct {
 	ProviderToken string
 	Currency      string
-	PriceMinor    int64
-	Title         string
-	Description   string
-	Payload       string
+
+	// VPN subscription (100 RUB)
+	VPNPriceMinor  int64
+	VPNTtitle      string
+	VPNDescription string
+	VPNPayload     string
+
+	// New country request (400 RUB)
+	NewCountryPriceMinor  int64
+	NewCountryTitle       string
+	NewCountryDescription string
+	NewCountryPayload     string
+
+	// dev flags
+	DevSkipVPNPayment        bool
+	DevSkipNewCountryPayment bool
 }
 
 type StateHandler interface {

@@ -2,8 +2,9 @@ package handlers
 
 import (
 	"database/sql"
-	"github.com/go-chi/chi/v5"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 
 	"vpn-app/internal/config"
 	"vpn-app/internal/outline"
@@ -14,10 +15,11 @@ type Server struct {
 	cfg config.Config
 	db  *sql.DB
 
-	users  repo.UsersRepoInterface
-	states repo.StateRepoInterface
-	subs   repo.SubscriptionsRepoInterface
-	keys   repo.AccessKeysRepoInterface
+	users        repo.UsersRepoInterface
+	states       repo.StateRepoInterface
+	subs         repo.SubscriptionsRepoInterface
+	keys         repo.AccessKeysRepoInterface
+	countriesAdd repo.CountriesToAddRepoInterface
 
 	clients map[string]outline.OutlineClientInterface
 }
@@ -29,13 +31,14 @@ func New(cfg config.Config, db *sql.DB) *Server {
 	}
 
 	return &Server{
-		cfg:     cfg,
-		db:      db,
-		users:   repo.NewUsersRepo(db),
-		states:  repo.NewStateRepo(db),
-		subs:    repo.NewSubscriptionsRepo(db),
-		keys:    repo.NewAccessKeysRepo(db),
-		clients: clients,
+		cfg:          cfg,
+		db:           db,
+		users:        repo.NewUsersRepo(db),
+		states:       repo.NewStateRepo(db),
+		subs:         repo.NewSubscriptionsRepo(db),
+		keys:         repo.NewAccessKeysRepo(db),
+		countriesAdd: repo.NewCountriesToAddRepo(db),
+		clients:      clients,
 	}
 }
 
@@ -47,13 +50,22 @@ func (s *Server) Router() http.Handler {
 		w.Write([]byte("ok"))
 	})
 
-	// bot-only endpoints
 	r.Group(func(r chi.Router) {
 		r.Use(s.auth)
 
 		r.Post("/v1/telegram/upsert", s.handleTelegramUpsert)
+
+		// старый путь
 		r.Post("/v1/telegram/set-router", s.handleTelegramSetState)
+		// алиас под нового бота
+		r.Post("/v1/telegram/set-state", s.handleTelegramSetState)
+
 		r.Post("/v1/telegram/mark-paid", s.handleTelegramMarkPaid)
+
+		// новые под меню
+		r.Get("/v1/telegram/subscriptions", s.handleTelegramSubscriptions)
+		r.Get("/v1/telegram/country-status", s.handleTelegramCountryStatus)
+		r.Post("/v1/telegram/countries-to-add", s.handleTelegramCountriesToAdd)
 
 		r.Post("/v1/issue-key", s.handleIssueKey)
 	})

@@ -5,7 +5,7 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"vpn-bot/internal/countries"
+	"vpn-bot/internal/menu"
 	"vpn-bot/internal/router"
 )
 
@@ -18,11 +18,10 @@ func (h Start) CanHandle(u tgbotapi.Update, s router.Session) bool {
 }
 
 func (h Start) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
-	// reset router to first step
-	_ = d.App.TelegramSetState(ctx, s.TgUserID, "CHOOSE_COUNTRY", nil)
+	_ = d.App.TelegramSetState(ctx, s.TgUserID, "MENU", nil)
 
-	msg := tgbotapi.NewMessage(s.ChatID, "Выбери страну сервера:")
-	msg.ReplyMarkup = countries.CountryKeyboard()
+	msg := tgbotapi.NewMessage(s.ChatID, "Меню:")
+	msg.ReplyMarkup = menu.Keyboard()
 	_, err := d.Bot.Send(msg)
 	return err
 }

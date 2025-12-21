@@ -21,8 +21,10 @@ type tgUpsertReq struct {
 }
 
 type tgUpsertResp struct {
-	UserID          int64      `json:"user_id"`
-	State           string     `json:"router"`
+	UserID int64 `json:"user_id"`
+
+	State string `json:"state"`
+
 	SelectedCountry *string    `json:"selected_country"`
 	SubscriptionOK  bool       `json:"subscription_ok"`
 	ActiveUntil     *time.Time `json:"active_until"`
@@ -35,22 +37,21 @@ func (s *Server) handleTelegramUpsert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u := repo.User{
-		TgUserID: req.TgUserID,
-	}
-	if req.Username != nil {
+	u := repo.User{TgUserID: req.TgUserID}
+
+	if req.Username != nil && *req.Username != "" {
 		u.Username = sql.NullString{String: *req.Username, Valid: true}
 	}
-	if req.FirstName != nil {
+	if req.FirstName != nil && *req.FirstName != "" {
 		u.FirstName = sql.NullString{String: *req.FirstName, Valid: true}
 	}
-	if req.LastName != nil {
+	if req.LastName != nil && *req.LastName != "" {
 		u.LastName = sql.NullString{String: *req.LastName, Valid: true}
 	}
-	if req.LanguageCode != nil {
+	if req.LanguageCode != nil && *req.LanguageCode != "" {
 		u.LanguageCode = sql.NullString{String: *req.LanguageCode, Valid: true}
 	}
-	if req.Phone != nil {
+	if req.Phone != nil && *req.Phone != "" {
 		u.Phone = sql.NullString{String: *req.Phone, Valid: true}
 	}
 
@@ -60,33 +61,53 @@ func (s *Server) handleTelegramUpsert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	st, err := s.states.EnsureDefault(r.Context(), user.ID, domain.StateChooseCountry)
+	st, err := s.states.EnsureDefault(r.Context(), user.ID, domain.StateMenu)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 
-	now := time.Now().UTC()
-	until, ok, err := s.subs.GetActiveUntil(r.Context(), user.ID, now)
-	if err != nil {
-		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
-		return
+	// гарантия
+	if st.State == "" {
+		st, _ = s.states.Set(r.Context(), user.ID, domain.StateMenu, st.SelectedCountry)
 	}
 
 	var sel *string
 	if st.SelectedCountry.Valid {
-		sel = &st.SelectedCountry.String
+		v := st.SelectedCountry.String
+		sel = &v
 	}
+
+	// subscription_ok только если selected_country выбран
+	now := time.Now().UTC()
+	subOK := false
+	var until time.Time
+
+	if sel != nil {
+		until, subOK, err = s.subs.GetActiveUntilFor(
+			r.Context(),
+			user.ID,
+			"vpn",
+			sql.NullString{String: *sel, Valid: true},
+			now,
+		)
+		if err != nil {
+			http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+	}
+
 	var au *time.Time
 	if !until.IsZero() {
-		au = &until
+		u := until
+		au = &u
 	}
 
 	utils.WriteJSON(w, tgUpsertResp{
 		UserID:          user.ID,
 		State:           st.State,
 		SelectedCountry: sel,
-		SubscriptionOK:  ok,
+		SubscriptionOK:  subOK,
 		ActiveUntil:     au,
 	})
 }

@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"strings"
-	"time"
-
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"vpn-app/internal/domain"
 	"vpn-app/internal/utils"
@@ -17,63 +17,102 @@ type issueKeyReq struct {
 	Country  string `json:"country"`
 }
 
+// Единый ответ: либо ключ, либо "нужна оплата".
 type issueKeyResp struct {
-	ServerName  string `json:"server_name"`
-	Country     string `json:"country"`
-	AccessKeyID string `json:"access_key_id"`
-	AccessURL   string `json:"access_url"`
+	Status string `json:"status"` // "ok" | "payment_required"
+
+	// заполняется всегда
+	Country    string `json:"country"`
+	ServerName string `json:"server_name,omitempty"`
+
+	// ok:
+	AccessKeyID string `json:"access_key_id,omitempty"`
+	AccessURL   string `json:"access_url,omitempty"`
+
+	// payment_required:
+	Payment *paymentHint `json:"payment,omitempty"`
+}
+
+type paymentHint struct {
+	Kind        string `json:"kind"`         // "vpn"
+	CountryCode string `json:"country_code"` // "hk"/"kz"
+	AmountMinor int64  `json:"amount_minor"`
+	Currency    string `json:"currency"`
+	// payload/title/desc можно отдать, если хочешь готовые значения под invoice
+	// Payload     string `json:"payload,omitempty"`
+	// Title       string `json:"title,omitempty"`
+	// Description string `json:"description,omitempty"`
 }
 
 func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 	var req issueKeyReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TgUserID == 0 || req.Country == "" {
-		http.Error(w, "bad request", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	req.Country = strings.ToLower(req.Country)
-
-	server, ok := s.cfg.Servers[req.Country]
-	if !ok {
-		http.Error(w, "unknown country", http.StatusBadRequest)
-		return
-	}
-
-	user, okU, err := s.users.GetByTelegramID(r.Context(), req.TgUserID)
-	if err != nil || !okU {
-		http.Error(w, "user not found", http.StatusBadRequest)
+	req.Country = strings.TrimSpace(req.Country)
+	if req.TgUserID == 0 || req.Country == "" {
+		http.Error(w, "tg_user_id and country are required", http.StatusBadRequest)
 		return
 	}
 
-	now := time.Now().UTC()
-	_, subOK, err := s.subs.GetActiveUntil(r.Context(), user.ID, now)
+	user, ok, err := s.users.GetByTelegramID(r.Context(), req.TgUserID)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	if !subOK {
-		http.Error(w, "subscription inactive", http.StatusPaymentRequired)
+	if !ok {
+		http.Error(w, "user not found", http.StatusNotFound)
 		return
 	}
 
-	// if already have active key
-	if k, ok, err := s.keys.GetActive(r.Context(), user.ID, req.Country); err == nil && ok {
-		_ = func() error {
-			_, err := s.states.Set(r.Context(), user.ID, domain.StateActive, sql.NullString{String: req.Country, Valid: true})
-			return err
-		}()
+	server, exists := s.cfg.Servers[req.Country]
+	if !exists {
+		http.Error(w, "unknown country", http.StatusBadRequest)
+		return
+	}
+
+	now := time.Now().UTC()
+
+	_, subOK, err := s.subs.GetActiveUntilFor(
+		r.Context(),
+		user.ID,
+		"vpn",
+		sql.NullString{String: req.Country, Valid: true},
+		now,
+	)
+	if err != nil {
+		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	// ✅ вместо 402 — нормальный бизнес-ответ
+	if !subOK {
 		utils.WriteJSON(w, issueKeyResp{
-			ServerName:  server.Name,
-			Country:     req.Country,
-			AccessKeyID: k.OutlineKeyID,
-			AccessURL:   k.AccessURL,
+			Status:     "payment_required",
+			Country:    req.Country,
+			ServerName: server.Name,
+			Payment: &paymentHint{
+				Kind:        "vpn",
+				CountryCode: req.Country,
+			},
 		})
 		return
 	}
 
-	client := s.clients[req.Country]
-	key, err := client.CreateAccessKey(r.Context(), "tg:"+utils.Itoa(req.TgUserID))
+	client, okClient := s.clients[req.Country]
+	if !okClient {
+		http.Error(w, "outline client not configured", http.StatusBadGateway)
+		return
+	}
+
+	// optional: если хочешь "один ключ на страну", можно сначала поискать существующий в access_keys
+	// и вернуть его, если он есть и не revoked.
+
+	keyName := fmt.Sprintf("tg:%d:%s", req.TgUserID, req.Country)
+	key, err := client.CreateAccessKey(r.Context(), keyName)
 	if err != nil {
-		http.Error(w, "outline create key failed: "+err.Error(), http.StatusBadGateway)
+		http.Error(w, "outline error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 
@@ -85,8 +124,9 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 	_, _ = s.states.Set(r.Context(), user.ID, domain.StateActive, sql.NullString{String: req.Country, Valid: true})
 
 	utils.WriteJSON(w, issueKeyResp{
-		ServerName:  server.Name,
+		Status:      "ok",
 		Country:     req.Country,
+		ServerName:  server.Name,
 		AccessKeyID: key.ID,
 		AccessURL:   key.AccessURL,
 	})
