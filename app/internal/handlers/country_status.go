@@ -25,7 +25,7 @@ func (s *Server) handleTelegramCountryStatus(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	user, ok, err := s.users.GetByTelegramID(r.Context(), tgUserID)
+	user, ok, err := s.usersRepo.GetByTelegramID(r.Context(), tgUserID)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
@@ -35,7 +35,7 @@ func (s *Server) handleTelegramCountryStatus(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	until, active, err := s.subs.GetActiveUntilFor(
+	until, active, err := s.subsRepo.GetActiveUntilFor(
 		r.Context(),
 		user.ID,
 		"vpn",

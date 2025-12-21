@@ -36,9 +36,6 @@ func main() {
 		NewCountryTitle:       utils.GetEnv("PAYMENTS_NEWCOUNTRY_TITLE", "Добавить новую страну"),
 		NewCountryDescription: utils.GetEnv("PAYMENTS_NEWCOUNTRY_DESCRIPTION", "Запрос на добавление новой страны"),
 		NewCountryPayload:     utils.GetEnv("PAYMENTS_NEWCOUNTRY_PAYLOAD", "new_country_v1"),
-
-		DevSkipVPNPayment:        strings.TrimSpace(os.Getenv("DEV_SKIP_VPN_PAYMENT")) == "true",
-		DevSkipNewCountryPayment: strings.TrimSpace(os.Getenv("DEV_SKIP_NEW_COUNTRY_PAYMENT")) == "true",
 	}
 
 	app := appclient.New(appBaseURL, internalToken)

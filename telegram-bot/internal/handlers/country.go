@@ -9,6 +9,7 @@ import (
 
 	"vpn-bot/internal/appclient"
 	"vpn-bot/internal/menu"
+	"vpn-bot/internal/payments"
 	"vpn-bot/internal/router"
 )
 
@@ -23,7 +24,6 @@ func (h CountryChosen) CanHandle(u tgbotapi.Update, s router.Session) bool {
 	if !strings.HasPrefix(u.CallbackQuery.Data, "country:") {
 		return false
 	}
-	// важно: это выбор VPN-страны, а не где-то ещё
 	return s.State == "CHOOSE_VPN_COUNTRY"
 }
 
@@ -41,7 +41,13 @@ func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.S
 	}
 
 	if st.Active {
-		msg := tgbotapi.NewMessage(s.ChatID, fmt.Sprintf("У тебя уже есть подписка на %s. Активна до: %s", country, st.ActiveUntil.Format("2006-01-02 15:04")))
+		msg := tgbotapi.NewMessage(
+			s.ChatID,
+			fmt.Sprintf("У тебя уже есть подписка на %s. Активна до: %s",
+				country,
+				st.ActiveUntil.Format("2006-01-02 15:04"),
+			),
+		)
 		msg.ReplyMarkup = menu.Keyboard()
 		_, _ = d.Bot.Send(msg)
 
@@ -49,10 +55,10 @@ func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.S
 		return nil
 	}
 
-	// 2) no active subscription -> payment 100 (skip by env for now)
+	// 2) no active subscription -> payment 100
 	_ = d.App.TelegramSetState(ctx, s.TgUserID, "AWAIT_VPN_PAYMENT", &country)
 
-	if d.Cfg.Payments.DevSkipVPNPayment || d.Cfg.Payments.ProviderToken == "" {
+	if d.Cfg.Payments.ProviderToken == "" {
 		_, _ = d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
 			TgUserID:    s.TgUserID,
 			Kind:        "vpn",
@@ -73,21 +79,17 @@ func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.S
 		return issueKeyNow(ctx, ss, d)
 	}
 
-	// later: send invoice immediately (real payments)
-	// (можно вынести в отдельный метод, но пока так)
-	price := tgbotapi.LabeledPrice{Label: "VPN 1 month", Amount: int(d.Cfg.Payments.VPNPriceMinor)}
-	inv := tgbotapi.NewInvoice(
+	err = payments.SendVPNInvoice(
+		d.Bot,
 		s.ChatID,
-		d.Cfg.Payments.VPNTtitle,
-		d.Cfg.Payments.VPNDescription+"\nCountry: "+country,
-		d.Cfg.Payments.VPNPayload,
 		d.Cfg.Payments.ProviderToken,
-		"",
 		d.Cfg.Payments.Currency,
-		[]tgbotapi.LabeledPrice{price},
+		d.Cfg.Payments.VPNTtitle,
+		d.Cfg.Payments.VPNDescription,
+		d.Cfg.Payments.VPNPayload,
+		country,
+		d.Cfg.Payments.VPNPriceMinor,
 	)
-
-	_, err = d.Bot.Send(inv)
 	if err != nil {
 		msg := tgbotapi.NewMessage(s.ChatID, "Не смог отправить invoice: "+err.Error())
 		msg.ReplyMarkup = menu.Keyboard()

@@ -25,7 +25,7 @@ func (s *Server) handleTelegramCountriesToAdd(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	user, ok, err := s.users.GetByTelegramID(r.Context(), req.TgUserID)
+	user, ok, err := s.usersRepo.GetByTelegramID(r.Context(), req.TgUserID)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
@@ -35,7 +35,7 @@ func (s *Server) handleTelegramCountriesToAdd(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := s.countriesAdd.Insert(r.Context(), user.ID, req.Text); err != nil {
+	if err := s.countriesAddRepo.Insert(r.Context(), user.ID, req.Text); err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
 	}

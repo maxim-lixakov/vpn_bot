@@ -33,10 +33,6 @@ type PaymentsConfig struct {
 	NewCountryTitle       string
 	NewCountryDescription string
 	NewCountryPayload     string
-
-	// dev flags
-	DevSkipVPNPayment        bool
-	DevSkipNewCountryPayment bool
 }
 
 type StateHandler interface {

@@ -26,7 +26,7 @@ func (s *Server) handleTelegramSubscriptions(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	user, ok, err := s.users.GetByTelegramID(r.Context(), tgUserID)
+	user, ok, err := s.usersRepo.GetByTelegramID(r.Context(), tgUserID)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
@@ -36,7 +36,7 @@ func (s *Server) handleTelegramSubscriptions(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	items, err := s.subs.ListByUser(r.Context(), user.ID)
+	items, err := s.subsRepo.ListByUser(r.Context(), user.ID)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return

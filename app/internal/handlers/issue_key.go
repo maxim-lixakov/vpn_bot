@@ -21,15 +21,12 @@ type issueKeyReq struct {
 type issueKeyResp struct {
 	Status string `json:"status"` // "ok" | "payment_required"
 
-	// заполняется всегда
 	Country    string `json:"country"`
 	ServerName string `json:"server_name,omitempty"`
 
-	// ok:
 	AccessKeyID string `json:"access_key_id,omitempty"`
 	AccessURL   string `json:"access_url,omitempty"`
 
-	// payment_required:
 	Payment *paymentHint `json:"payment,omitempty"`
 }
 
@@ -38,10 +35,6 @@ type paymentHint struct {
 	CountryCode string `json:"country_code"` // "hk"/"kz"
 	AmountMinor int64  `json:"amount_minor"`
 	Currency    string `json:"currency"`
-	// payload/title/desc можно отдать, если хочешь готовые значения под invoice
-	// Payload     string `json:"payload,omitempty"`
-	// Title       string `json:"title,omitempty"`
-	// Description string `json:"description,omitempty"`
 }
 
 func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +49,7 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, ok, err := s.users.GetByTelegramID(r.Context(), req.TgUserID)
+	user, ok, err := s.usersRepo.GetByTelegramID(r.Context(), req.TgUserID)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
@@ -74,7 +67,7 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 
-	_, subOK, err := s.subs.GetActiveUntilFor(
+	_, subOK, err := s.subsRepo.GetActiveUntilFor(
 		r.Context(),
 		user.ID,
 		"vpn",
@@ -86,7 +79,6 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ✅ вместо 402 — нормальный бизнес-ответ
 	if !subOK {
 		utils.WriteJSON(w, issueKeyResp{
 			Status:     "payment_required",
@@ -106,9 +98,6 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// optional: если хочешь "один ключ на страну", можно сначала поискать существующий в access_keys
-	// и вернуть его, если он есть и не revoked.
-
 	keyName := fmt.Sprintf("tg:%d:%s", req.TgUserID, req.Country)
 	key, err := client.CreateAccessKey(r.Context(), keyName)
 	if err != nil {
@@ -116,12 +105,12 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.keys.Insert(r.Context(), user.ID, req.Country, key.ID, key.AccessURL); err != nil {
+	if err := s.keysRepo.Insert(r.Context(), user.ID, req.Country, key.ID, key.AccessURL); err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 
-	_, _ = s.states.Set(r.Context(), user.ID, domain.StateActive, sql.NullString{String: req.Country, Valid: true})
+	_, _ = s.statesRepo.Set(r.Context(), user.ID, domain.StateActive, sql.NullString{String: req.Country, Valid: true})
 
 	utils.WriteJSON(w, issueKeyResp{
 		Status:      "ok",
