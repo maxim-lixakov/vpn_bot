@@ -1,6 +1,9 @@
 package utils
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 func GetEnv(k, def string) string {
 	if v := os.Getenv(k); v != "" {
@@ -47,4 +50,28 @@ func Itoa64(v int64) string {
 		b[i] = '-'
 	}
 	return string(b[i:])
+}
+
+func Mdv2Escape(s string) string {
+	replacer := strings.NewReplacer(
+		`_`, `\_`,
+		`*`, `\*`,
+		`[`, `\[`,
+		`]`, `\]`,
+		`(`, `\(`,
+		`)`, `\)`,
+		`~`, `\~`,
+		"`", "\\`",
+		`>`, `\>`,
+		`#`, `\#`,
+		`+`, `\+`,
+		`-`, `\-`,
+		`=`, `\=`,
+		`|`, `\|`,
+		`{`, `\{`,
+		`}`, `\}`,
+		`.`, `\.`,
+		`!`, `\!`,
+	)
+	return replacer.Replace(s)
 }

@@ -161,7 +161,7 @@ func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 	server := html.EscapeString(resp.ServerName)
 
 	msgText := fmt.Sprintf(
-		"<b>Сервер:</b> %s\n\n<b>Ключ:</b>\n<pre><code>%s</code></pre>\n<b>Скачать Outline Client:</b>\n• <a href=\"%s\">iOS — скачать</a>\n• <a href=\"%s\">Android — скачать</a>\n• <a href=\"%s\">Desktop (Windows/macOS/Linux) — скачать</a>",
+		"<b>Сервер:</b> %s\n\n<b>Ключ:</b>\n<pre><code>%s</code></pre>\n<b>\nСкачать Outline Client:</b>\n• <a href=\"%s\">iOS — скачать</a>\n• <a href=\"%s\">Android — скачать</a>\n• <a href=\"%s\">Desktop (Windows/macOS/Linux) — скачать</a>",
 		server,
 		key,
 		"https://apps.apple.com/ru/app/outline-app/id1356177741",
@@ -182,11 +182,11 @@ func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 	// Ожидаемый путь: telegram-bot/internal/images/*.png (см. Dockerfile ниже)
 	baseDir := "internal/images"
 
-	if err := sendTextAndImage(d.Bot, s.ChatID, "После установки приложения, откройте его", filepath.Join(baseDir, "step1.png")); err != nil {
+	if err := sendTextAndImage(d.Bot, s.ChatID, "После установки приложения, откройте его.", filepath.Join(baseDir, "step1.png")); err != nil {
 		// не валим весь флоу
 		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step1.png: "+err.Error()))
 	}
-	if err := sendTextAndImage(d.Bot, s.ChatID, "Вставьте сюда скопированный ключ", filepath.Join(baseDir, "step2.png")); err != nil {
+	if err := sendTextAndImage(d.Bot, s.ChatID, "Вставьте сюда скопированный ключ.", filepath.Join(baseDir, "step2.png")); err != nil {
 		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step2.png: "+err.Error()))
 	}
 	if err := sendTextAndImage(d.Bot, s.ChatID, "Нажмите «Подтвердить», а затем «Подключить».\nVPN должен работать — проверяйте.", filepath.Join(baseDir, "step3.png")); err != nil {
