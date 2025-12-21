@@ -39,11 +39,3 @@ func (h KeyIssuer) Handle(ctx context.Context, u tgbotapi.Update, s router.Sessi
 	_, err = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, text))
 	return err
 }
-
-func officialLinks() string {
-	return "" +
-		"- Windows: https://s3.amazonaws.com/outline-releases/client/windows/stable/Outline-Client.exe\n" +
-		"- iOS: https://itunes.apple.com/us/app/outline-app/id1356177741\n" +
-		"- Android: https://play.google.com/store/apps/details?id=org.outline.android.client\n" +
-		"- Android (APK): https://s3.amazonaws.com/outline-releases/client/android/stable/Outline-Client.apk\n"
-}

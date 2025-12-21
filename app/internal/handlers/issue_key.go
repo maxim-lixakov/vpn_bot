@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"strings"
-	"time"
-
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"vpn-app/internal/domain"
 	"vpn-app/internal/utils"
@@ -26,26 +26,30 @@ type issueKeyResp struct {
 
 func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 	var req issueKeyReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TgUserID == 0 || req.Country == "" {
-		http.Error(w, "bad request", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	req.Country = strings.ToLower(req.Country)
+	req.Country = strings.TrimSpace(req.Country)
+	if req.TgUserID == 0 || req.Country == "" {
+		http.Error(w, "tg_user_id and country are required", http.StatusBadRequest)
+		return
+	}
 
-	server, ok := s.cfg.Servers[req.Country]
+	user, ok, err := s.users.GetByTelegramID(r.Context(), req.TgUserID)
+	if err != nil {
+		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
 	if !ok {
-		http.Error(w, "unknown country", http.StatusBadRequest)
-		return
-	}
-
-	user, okU, err := s.users.GetByTelegramID(r.Context(), req.TgUserID)
-	if err != nil || !okU {
-		http.Error(w, "user not found", http.StatusBadRequest)
+		http.Error(w, "user not found", http.StatusNotFound)
 		return
 	}
 
 	now := time.Now().UTC()
-	until, subOK, err := s.subs.GetActiveUntilFor(
+
+	// Require active vpn subscription for the requested country.
+	_, subOK, err := s.subs.GetActiveUntilFor(
 		r.Context(),
 		user.ID,
 		"vpn",
@@ -61,28 +65,27 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// if already have active key
-	if k, ok, err := s.keys.GetActive(r.Context(), user.ID, req.Country); err == nil && ok {
-		_ = func() error {
-			_, err := s.states.Set(r.Context(), user.ID, domain.StateActive, sql.NullString{String: req.Country, Valid: true})
-			return err
-		}()
-		utils.WriteJSON(w, issueKeyResp{
-			ServerName:  server.Name,
-			Country:     req.Country,
-			AccessKeyID: k.OutlineKeyID,
-			AccessURL:   k.AccessURL,
-		})
+	server, exists := s.cfg.Servers[req.Country]
+	if !exists {
+		http.Error(w, "unknown country", http.StatusBadRequest)
 		return
 	}
 
-	client := s.clients[req.Country]
-	key, err := client.CreateAccessKey(r.Context(), "tg:"+utils.Itoa(req.TgUserID))
+	client, okClient := s.clients[req.Country]
+	if !okClient {
+		http.Error(w, "outline client not configured", http.StatusBadGateway)
+		return
+	}
+
+	// Create key in Outline manager.
+	keyName := fmt.Sprintf("tg:%d:%s", req.TgUserID, req.Country)
+	key, err := client.CreateAccessKey(r.Context(), keyName)
 	if err != nil {
-		http.Error(w, "outline create key failed: "+err.Error(), http.StatusBadGateway)
+		http.Error(w, "outline error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 
+	// Store mapping for future deactivation.
 	if err := s.keys.Insert(r.Context(), user.ID, req.Country, key.ID, key.AccessURL); err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
