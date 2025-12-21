@@ -60,7 +60,7 @@ func (s *Server) handleTelegramUpsert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	st, err := s.states.EnsureDefault(r.Context(), user.ID, domain.StateChooseCountry)
+	st, err := s.states.EnsureDefault(r.Context(), user.ID, domain.StateMenu)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return

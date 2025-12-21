@@ -45,7 +45,13 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	_, subOK, err := s.subs.GetActiveUntil(r.Context(), user.ID, now)
+	until, subOK, err := s.subs.GetActiveUntilFor(
+		r.Context(),
+		user.ID,
+		"vpn",
+		sql.NullString{String: req.Country, Valid: true},
+		now,
+	)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return

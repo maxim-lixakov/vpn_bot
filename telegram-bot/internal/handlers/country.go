@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"vpn-bot/internal/appclient"
+	"vpn-bot/internal/menu"
 	"vpn-bot/internal/router"
 )
 
@@ -18,37 +20,80 @@ func (h CountryChosen) CanHandle(u tgbotapi.Update, s router.Session) bool {
 	if u.CallbackQuery == nil {
 		return false
 	}
-	return strings.HasPrefix(u.CallbackQuery.Data, "country:")
+	if !strings.HasPrefix(u.CallbackQuery.Data, "country:") {
+		return false
+	}
+	// важно: это выбор VPN-страны, а не где-то ещё
+	return s.State == "CHOOSE_VPN_COUNTRY"
 }
 
 func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
 	country := strings.TrimPrefix(u.CallbackQuery.Data, "country:")
-	if _, err := d.Bot.Request(tgbotapi.NewCallback(u.CallbackQuery.ID, "Готово")); err != nil {
-		// можно залогировать
+	_, _ = d.Bot.Request(tgbotapi.NewCallback(u.CallbackQuery.ID, "Ок"))
+
+	// 1) check active subscription for this country
+	st, err := d.App.TelegramCountryStatus(ctx, s.TgUserID, country)
+	if err != nil {
+		msg := tgbotapi.NewMessage(s.ChatID, "Не смог проверить подписку: "+err.Error())
+		msg.ReplyMarkup = menu.Keyboard()
+		_, _ = d.Bot.Send(msg)
+		return nil
 	}
 
-	// move to payment step
-	_ = d.App.TelegramSetState(ctx, s.TgUserID, "AWAIT_PAYMENT", &country)
+	if st.Active {
+		msg := tgbotapi.NewMessage(s.ChatID, fmt.Sprintf("У тебя уже есть подписка на %s. Активна до: %s", country, st.ActiveUntil.Format("2006-01-02 15:04")))
+		msg.ReplyMarkup = menu.Keyboard()
+		_, _ = d.Bot.Send(msg)
 
-	if d.Cfg.Payments.ProviderToken == "" {
-		// DEV BYPASS
+		_ = d.App.TelegramSetState(ctx, s.TgUserID, "MENU", nil)
+		return nil
+	}
+
+	// 2) no active subscription -> payment 100 (skip by env for now)
+	_ = d.App.TelegramSetState(ctx, s.TgUserID, "AWAIT_VPN_PAYMENT", &country)
+
+	if d.Cfg.Payments.DevSkipVPNPayment || d.Cfg.Payments.ProviderToken == "" {
 		_, _ = d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
-			TgUserID:                s.TgUserID,
-			AmountMinor:             d.Cfg.Payments.PriceMinor,
-			Currency:                d.Cfg.Payments.Currency,
+			TgUserID:    s.TgUserID,
+			Kind:        "vpn",
+			CountryCode: &country,
+			AmountMinor: d.Cfg.Payments.VPNPriceMinor,
+			Currency:    d.Cfg.Payments.Currency,
+
 			TelegramPaymentChargeID: "dev-bypass",
 			ProviderPaymentChargeID: "dev-bypass",
 		})
 
-		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Оплата временно пропущена (dev mode). Выдаю ключ…"))
-		// важно: router.SelectedCountry в Session ещё старый, поэтому сформируй новую сессию локально:
+		msg := tgbotapi.NewMessage(s.ChatID, "Оплата пропущена (dev). Выдаю ключ…")
+		msg.ReplyMarkup = menu.Keyboard()
+		_, _ = d.Bot.Send(msg)
+
 		ss := s
 		ss.SelectedCountry = &country
 		return issueKeyNow(ctx, ss, d)
 	}
 
-	// delegate to payment instructions (send invoice or message)
-	text := "Далее — оплата подписки 100 руб/мес."
-	_, err := d.Bot.Send(tgbotapi.NewMessage(s.ChatID, text))
-	return err
+	// later: send invoice immediately (real payments)
+	// (можно вынести в отдельный метод, но пока так)
+	price := tgbotapi.LabeledPrice{Label: "VPN 1 month", Amount: int(d.Cfg.Payments.VPNPriceMinor)}
+	inv := tgbotapi.NewInvoice(
+		s.ChatID,
+		d.Cfg.Payments.VPNTtitle,
+		d.Cfg.Payments.VPNDescription+"\nCountry: "+country,
+		d.Cfg.Payments.VPNPayload,
+		d.Cfg.Payments.ProviderToken,
+		"",
+		d.Cfg.Payments.Currency,
+		[]tgbotapi.LabeledPrice{price},
+	)
+
+	_, err = d.Bot.Send(inv)
+	if err != nil {
+		msg := tgbotapi.NewMessage(s.ChatID, "Не смог отправить invoice: "+err.Error())
+		msg.ReplyMarkup = menu.Keyboard()
+		_, _ = d.Bot.Send(msg)
+		return nil
+	}
+
+	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -18,18 +19,26 @@ func main() {
 	botToken := os.Getenv("BOT_TOKEN")
 	appBaseURL := os.Getenv("APP_BASE_URL")
 	internalToken := os.Getenv("APP_INTERNAL_TOKEN")
-
 	if botToken == "" || appBaseURL == "" || internalToken == "" {
 		log.Fatal("BOT_TOKEN, APP_BASE_URL, APP_INTERNAL_TOKEN are required")
 	}
 
 	pcfg := stateRouter.PaymentsConfig{
-		ProviderToken: os.Getenv("PAYMENTS_PROVIDER_TOKEN"),
+		ProviderToken: strings.TrimSpace(os.Getenv("PAYMENTS_PROVIDER_TOKEN")),
 		Currency:      utils.GetEnv("PAYMENTS_CURRENCY", "RUB"),
-		PriceMinor:    utils.MustInt64(utils.GetEnv("PAYMENTS_PRICE_MINOR", "10000")),
-		Title:         utils.GetEnv("PAYMENTS_TITLE", "Outline VPN"),
-		Description:   utils.GetEnv("PAYMENTS_DESCRIPTION", "VPN subscription 1 month"),
-		Payload:       utils.GetEnv("PAYMENTS_PAYLOAD", "subscription_v1"),
+
+		VPNPriceMinor:  utils.MustInt64(utils.GetEnv("PAYMENTS_VPN_PRICE_MINOR", "10000")),
+		VPNTtitle:      utils.GetEnv("PAYMENTS_VPN_TITLE", "Outline VPN"),
+		VPNDescription: utils.GetEnv("PAYMENTS_VPN_DESCRIPTION", "VPN subscription 1 month"),
+		VPNPayload:     utils.GetEnv("PAYMENTS_VPN_PAYLOAD", "vpn_sub_v1"),
+
+		NewCountryPriceMinor:  utils.MustInt64(utils.GetEnv("PAYMENTS_NEWCOUNTRY_PRICE_MINOR", "40000")),
+		NewCountryTitle:       utils.GetEnv("PAYMENTS_NEWCOUNTRY_TITLE", "Добавить новую страну"),
+		NewCountryDescription: utils.GetEnv("PAYMENTS_NEWCOUNTRY_DESCRIPTION", "Запрос на добавление новой страны"),
+		NewCountryPayload:     utils.GetEnv("PAYMENTS_NEWCOUNTRY_PAYLOAD", "new_country_v1"),
+
+		DevSkipVPNPayment:        strings.TrimSpace(os.Getenv("DEV_SKIP_VPN_PAYMENT")) == "true",
+		DevSkipNewCountryPayment: strings.TrimSpace(os.Getenv("DEV_SKIP_NEW_COUNTRY_PAYMENT")) == "true",
 	}
 
 	app := appclient.New(appBaseURL, internalToken)
@@ -38,17 +47,22 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("bot authorized as @%s", bot.Self.UserName)
 
 	router := stateRouter.NewRouter(
-		handlers.Start{},
-		handlers.CountryChosen{},
-		handlers.PaymentFlow{},
-		handlers.KeyIssuer{},
+		handlers.Start{},              // /start -> MENU
+		handlers.Menu{},               // /menu or "меню" or callback menu
+		handlers.MySubscriptions{},    // "моя подписка"
+		handlers.ChooseVPN{},          // "выбрать страну впн"
+		handlers.OrderNewCountry{},    // "заказать новую страну"
+		handlers.CountryChosen{},      // callback country:xx
+		handlers.CountryRequestText{}, // free text after question
+		handlers.PaymentFlow{},        // precheckout + successful payment (2 payloads)
 	)
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30
+	u.AllowedUpdates = []string{"message", "callback_query", "pre_checkout_query"} // важно
+
 	updates := bot.GetUpdatesChan(u)
 
 	deps := stateRouter.Deps{

@@ -13,7 +13,10 @@ import (
 )
 
 type tgMarkPaidReq struct {
-	TgUserID                int64  `json:"tg_user_id"`
+	TgUserID    int64   `json:"tg_user_id"`
+	Kind        string  `json:"kind"`         // "vpn" | "country_request"
+	CountryCode *string `json:"country_code"` // для vpn
+
 	AmountMinor             int64  `json:"amount_minor"`
 	Currency                string `json:"currency"`
 	TelegramPaymentChargeID string `json:"telegram_payment_charge_id"`

@@ -10,7 +10,8 @@ import (
 
 type tgSetStateReq struct {
 	TgUserID        int64   `json:"tg_user_id"`
-	State           string  `json:"router"`
+	Router          string  `json:"router"` // старое имя
+	State           string  `json:"state"`  // новое имя
 	SelectedCountry *string `json:"selected_country"`
 }
 
@@ -26,6 +27,15 @@ func (s *Server) handleTelegramSetState(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	stVal := req.Router
+	if stVal == "" {
+		stVal = req.State
+	}
+	if stVal == "" {
+		http.Error(w, "router/state is required", http.StatusBadRequest)
+		return
+	}
+
 	user, ok, err := s.users.GetByTelegramID(r.Context(), req.TgUserID)
 	if err != nil || !ok {
 		http.Error(w, "user not found", http.StatusBadRequest)
@@ -37,7 +47,7 @@ func (s *Server) handleTelegramSetState(w http.ResponseWriter, r *http.Request) 
 		sel = sql.NullString{String: *req.SelectedCountry, Valid: true}
 	}
 
-	st, err := s.states.Set(r.Context(), user.ID, req.State, sel)
+	st, err := s.states.Set(r.Context(), user.ID, stVal, sel)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
