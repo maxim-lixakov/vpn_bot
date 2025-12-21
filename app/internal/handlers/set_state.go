@@ -10,8 +10,7 @@ import (
 
 type tgSetStateReq struct {
 	TgUserID        int64   `json:"tg_user_id"`
-	Router          string  `json:"router"` // старое имя (бот сейчас шлёт сюда)
-	State           string  `json:"state"`  // новое имя
+	State           string  `json:"state"`
 	SelectedCountry *string `json:"selected_country"`
 }
 
@@ -24,15 +23,6 @@ func (s *Server) handleTelegramSetState(w http.ResponseWriter, r *http.Request) 
 	var req tgSetStateReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TgUserID == 0 {
 		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-
-	stVal := req.Router
-	if stVal == "" {
-		stVal = req.State
-	}
-	if stVal == "" {
-		http.Error(w, "router/state is required", http.StatusBadRequest)
 		return
 	}
 
@@ -53,7 +43,7 @@ func (s *Server) handleTelegramSetState(w http.ResponseWriter, r *http.Request) 
 		sel = sql.NullString{}
 	}
 
-	st, err := s.states.Set(r.Context(), user.ID, stVal, sel)
+	st, err := s.states.Set(r.Context(), user.ID, req.State, sel)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return

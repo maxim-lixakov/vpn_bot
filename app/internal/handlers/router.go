@@ -55,9 +55,6 @@ func (s *Server) Router() http.Handler {
 
 		r.Post("/v1/telegram/upsert", s.handleTelegramUpsert)
 
-		// старый путь
-		r.Post("/v1/telegram/set-router", s.handleTelegramSetState)
-		// алиас под нового бота
 		r.Post("/v1/telegram/set-state", s.handleTelegramSetState)
 
 		r.Post("/v1/telegram/mark-paid", s.handleTelegramMarkPaid)
