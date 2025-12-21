@@ -23,7 +23,6 @@ func (h CountryChosen) CanHandle(u tgbotapi.Update, s router.Session) bool {
 	if !strings.HasPrefix(u.CallbackQuery.Data, "country:") {
 		return false
 	}
-	// важно: это выбор VPN-страны, а не где-то ещё
 	return s.State == "CHOOSE_VPN_COUNTRY"
 }
 

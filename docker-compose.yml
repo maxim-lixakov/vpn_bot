@@ -5,8 +5,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-vpn}
       POSTGRES_USER: ${POSTGRES_USER:-vpn}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vpn}
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -18,8 +16,6 @@ services:
   app:
     build: ./app
     env_file: .env
-    ports:
-      - "8088:8080"
     depends_on:
       postgres:
         condition: service_healthy
