@@ -62,14 +62,12 @@ func SendVPNInvoice(
 	title string,
 	description string,
 	payload string,
-	country string,
 	amountMinor int64,
 ) error {
 	prices := []tgbotapi.LabeledPrice{
 		{Label: "VPN 1 month", Amount: int(amountMinor)},
 	}
-	desc := description + "\nCountry: " + country
-	return SendInvoiceRaw(bot, chatID, title, desc, payload, providerToken, currency, prices)
+	return SendInvoiceRaw(bot, chatID, title, description, payload, providerToken, currency, prices)
 }
 
 func SendNewCountryInvoice(

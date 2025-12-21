@@ -87,7 +87,6 @@ func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.S
 		d.Cfg.Payments.VPNTtitle,
 		d.Cfg.Payments.VPNDescription,
 		d.Cfg.Payments.VPNPayload,
-		country,
 		d.Cfg.Payments.VPNPriceMinor,
 	)
 	if err != nil {

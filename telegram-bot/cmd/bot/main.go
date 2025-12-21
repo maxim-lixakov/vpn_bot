@@ -27,9 +27,9 @@ func main() {
 		ProviderToken: strings.TrimSpace(os.Getenv("PAYMENTS_PROVIDER_TOKEN")),
 		Currency:      utils.GetEnv("PAYMENTS_CURRENCY", "RUB"),
 
-		VPNPriceMinor:  utils.MustInt64(utils.GetEnv("PAYMENTS_VPN_PRICE_MINOR", "10000")),
-		VPNTtitle:      utils.GetEnv("PAYMENTS_VPN_TITLE", "Outline VPN"),
-		VPNDescription: utils.GetEnv("PAYMENTS_VPN_DESCRIPTION", "VPN subscription 1 month"),
+		VPNPriceMinor:  utils.MustInt64(utils.GetEnv("PAYMENTS_VPN_PRICE_MINOR", "15000")),
+		VPNTtitle:      utils.GetEnv("PAYMENTS_VPN_TITLE", "LICKSUCKOFF VPN"),
+		VPNDescription: utils.GetEnv("PAYMENTS_VPN_DESCRIPTION", "VPN подписка на 1 месяц"),
 		VPNPayload:     utils.GetEnv("PAYMENTS_VPN_PAYLOAD", "vpn_sub_v1"),
 
 		NewCountryPriceMinor:  utils.MustInt64(utils.GetEnv("PAYMENTS_NEWCOUNTRY_PRICE_MINOR", "40000")),
