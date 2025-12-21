@@ -8,4 +8,5 @@ RUN CGO_ENABLED=0 go build -o /out/bot ./cmd/bot
 FROM alpine:3.20
 WORKDIR /app
 COPY --from=build /out/bot /app/bot
+COPY internal/images /app/internal/images
 ENTRYPOINT ["/app/bot"]

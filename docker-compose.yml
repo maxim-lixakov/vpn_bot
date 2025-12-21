@@ -21,7 +21,9 @@ services:
         condition: service_healthy
 
   telegram-bot:
-    build: ./telegram-bot
+    build:
+      context: ./telegram-bot
+      dockerfile: Dockerfile
     env_file: .env
     depends_on:
       - app

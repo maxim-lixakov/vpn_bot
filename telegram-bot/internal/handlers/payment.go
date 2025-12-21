@@ -3,6 +3,9 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"html"
+	"os"
+	"path/filepath"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
@@ -20,6 +23,7 @@ func (h PaymentFlow) CanHandle(u tgbotapi.Update, s router.Session) bool {
 }
 
 func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
+	// 1) pre-checkout: must answer OK within ~10 seconds
 	if u.PreCheckoutQuery != nil {
 		pc := tgbotapi.PreCheckoutConfig{
 			PreCheckoutQueryID: u.PreCheckoutQuery.ID,
@@ -29,12 +33,12 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Ses
 		return err
 	}
 
+	// 2) successful payment
 	sp := u.Message.SuccessfulPayment
 	payload := sp.InvoicePayload
 
 	switch payload {
 	case d.Cfg.Payments.VPNPayload:
-		// must have selected country saved in session
 		if s.SelectedCountry == nil {
 			msg := tgbotapi.NewMessage(s.ChatID, "Не выбрана страна. Нажми /start")
 			msg.ReplyMarkup = menu.Keyboard()
@@ -59,10 +63,7 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Ses
 			return nil
 		}
 
-		msg := tgbotapi.NewMessage(s.ChatID, "Оплата успешна. Выдаю ключ…")
-		msg.ReplyMarkup = menu.Keyboard()
-		_, _ = d.Bot.Send(msg)
-
+		// выдаём ключ + инструкцию с картинками
 		return issueKeyNow(ctx, s, d)
 
 	case d.Cfg.Payments.NewCountryPayload:
@@ -91,7 +92,6 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Ses
 		return nil
 	}
 
-	// неизвестный payload
 	msg := tgbotapi.NewMessage(s.ChatID, "Оплата получена, но payload не распознан.")
 	msg.ReplyMarkup = menu.Keyboard()
 	_, _ = d.Bot.Send(msg)
@@ -114,10 +114,9 @@ func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 		return nil
 	}
 
+	// если app говорит "нужна оплата" — тут можно отправить invoice или dev-bypass (по твоей логике)
 	if resp.Status == "payment_required" {
-		// dev-bypass или реальная оплата
 		if d.Cfg.Payments.ProviderToken == "" {
-			// сохраняем оплату в app
 			_, err := d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
 				TgUserID:    s.TgUserID,
 				Kind:        "vpn",
@@ -135,7 +134,6 @@ func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 				return nil
 			}
 
-			// снова пытаемся получить ключ
 			resp2, err := d.App.IssueKey(ctx, s.TgUserID, *s.SelectedCountry)
 			if err != nil || resp2.Status != "ok" {
 				msg := tgbotapi.NewMessage(s.ChatID, "Оплата сохранена, но ключ пока не выдался. Попробуй ещё раз.")
@@ -145,8 +143,7 @@ func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 			}
 			resp = resp2
 		} else {
-			// тут будет invoice (позже)
-			msg := tgbotapi.NewMessage(s.ChatID, "Нужна оплата 100р/мес. (invoice подключим позже).")
+			msg := tgbotapi.NewMessage(s.ChatID, "Нужна оплата 100р/мес. Нажми кнопку оплаты ещё раз.")
 			msg.ReplyMarkup = menu.Keyboard()
 			_, _ = d.Bot.Send(msg)
 			return nil
@@ -160,25 +157,65 @@ func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 		return nil
 	}
 
-	text := fmt.Sprintf(
-		"Сервер: %s\nСтрана: %s\n\nКлюч:\n%s\n\nСкачать Outline Client:\n%s",
-		resp.ServerName,
-		resp.Country,
-		resp.AccessURL,
-		officialLinks(),
+	key := html.EscapeString(resp.AccessURL)
+	server := html.EscapeString(resp.ServerName)
+
+	msgText := fmt.Sprintf(
+		"<b>Сервер:</b> %s\n\n<b>Ключ:</b>\n<pre><code>%s</code></pre>\n<b>Скачать Outline Client:</b>\n• <a href=\"%s\">iOS — скачать</a>\n• <a href=\"%s\">Android — скачать</a>\n• <a href=\"%s\">Desktop (Windows/macOS/Linux) — скачать</a>",
+		server,
+		key,
+		"https://apps.apple.com/ru/app/outline-app/id1356177741",
+		"https://play.google.com/store/apps/details?id=org.outline.android.client&pcampaignid=web_share",
+		"https://getoutline.org/intl/ru/get-started/#step-3",
 	)
 
-	msg := tgbotapi.NewMessage(s.ChatID, text)
-	msg.ReplyMarkup = menu.Keyboard()
-	_, err = d.Bot.Send(msg)
-	return err
+	m := tgbotapi.NewMessage(s.ChatID, msgText)
+	m.ParseMode = "HTML"
+	m.DisableWebPagePreview = true
+	m.ReplyMarkup = menu.Keyboard()
+	if _, err := d.Bot.Send(m); err != nil {
+		return err
+	}
+
+	// --- шаги с картинками ---
+	// Папка с картинками должна существовать в контейнере.
+	// Ожидаемый путь: telegram-bot/internal/images/*.png (см. Dockerfile ниже)
+	baseDir := "internal/images"
+
+	if err := sendTextAndImage(d.Bot, s.ChatID, "После установки приложения, откройте его", filepath.Join(baseDir, "step1.png")); err != nil {
+		// не валим весь флоу
+		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step1.png: "+err.Error()))
+	}
+	if err := sendTextAndImage(d.Bot, s.ChatID, "Вставьте сюда скопированный ключ", filepath.Join(baseDir, "step2.png")); err != nil {
+		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step2.png: "+err.Error()))
+	}
+	if err := sendTextAndImage(d.Bot, s.ChatID, "Нажмите «Подтвердить», а затем «Подключить».\nVPN должен работать — проверяйте.", filepath.Join(baseDir, "step3.png")); err != nil {
+		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step3.png: "+err.Error()))
+	}
+	if err := sendTextAndImage(d.Bot, s.ChatID, "Если вы купили больше одного VPN — в правом верхнем углу нажмите плюсик и повторите предыдущие шаги.", filepath.Join(baseDir, "step4.png")); err != nil {
+		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step4.png: "+err.Error()))
+	}
+
+	return nil
 }
 
-func officialLinks() string {
-	return "" +
-		"- Windows: https://s3.amazonaws.com/outline-releases/client/windows/stable/Outline-Client.exe\n" +
-		"- macOS: https://s3.amazonaws.com/outline-releases/client/macos/stable/Outline-Client.dmg\n" +
-		"- iOS: https://itunes.apple.com/us/app/outline-app/id1356177741\n" +
-		"- Android: https://play.google.com/store/apps/details?id=org.outline.android.client\n" +
-		"- Android (APK): https://s3.amazonaws.com/outline-releases/client/android/stable/Outline-Client.apk\n"
+func sendTextAndImage(bot *tgbotapi.BotAPI, chatID int64, text string, imagePath string) error {
+	// 1) текст
+	if _, err := bot.Send(tgbotapi.NewMessage(chatID, text)); err != nil {
+		return err
+	}
+
+	// 2) картинка
+	b, err := os.ReadFile(imagePath)
+	if err != nil {
+		return err
+	}
+
+	photo := tgbotapi.NewPhoto(chatID, tgbotapi.FileBytes{
+		Name:  filepath.Base(imagePath),
+		Bytes: b,
+	})
+	photo.DisableNotification = true
+	_, err = bot.Send(photo)
+	return err
 }
