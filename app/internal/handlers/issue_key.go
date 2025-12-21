@@ -17,11 +17,31 @@ type issueKeyReq struct {
 	Country  string `json:"country"`
 }
 
+// Единый ответ: либо ключ, либо "нужна оплата".
 type issueKeyResp struct {
-	ServerName  string `json:"server_name"`
-	Country     string `json:"country"`
-	AccessKeyID string `json:"access_key_id"`
-	AccessURL   string `json:"access_url"`
+	Status string `json:"status"` // "ok" | "payment_required"
+
+	// заполняется всегда
+	Country    string `json:"country"`
+	ServerName string `json:"server_name,omitempty"`
+
+	// ok:
+	AccessKeyID string `json:"access_key_id,omitempty"`
+	AccessURL   string `json:"access_url,omitempty"`
+
+	// payment_required:
+	Payment *paymentHint `json:"payment,omitempty"`
+}
+
+type paymentHint struct {
+	Kind        string `json:"kind"`         // "vpn"
+	CountryCode string `json:"country_code"` // "hk"/"kz"
+	AmountMinor int64  `json:"amount_minor"`
+	Currency    string `json:"currency"`
+	// payload/title/desc можно отдать, если хочешь готовые значения под invoice
+	// Payload     string `json:"payload,omitempty"`
+	// Title       string `json:"title,omitempty"`
+	// Description string `json:"description,omitempty"`
 }
 
 func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
@@ -46,9 +66,14 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	server, exists := s.cfg.Servers[req.Country]
+	if !exists {
+		http.Error(w, "unknown country", http.StatusBadRequest)
+		return
+	}
+
 	now := time.Now().UTC()
 
-	// Require active vpn subscription for the requested country.
 	_, subOK, err := s.subs.GetActiveUntilFor(
 		r.Context(),
 		user.ID,
@@ -60,14 +85,18 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	if !subOK {
-		http.Error(w, "subscription inactive", http.StatusPaymentRequired)
-		return
-	}
 
-	server, exists := s.cfg.Servers[req.Country]
-	if !exists {
-		http.Error(w, "unknown country", http.StatusBadRequest)
+	// ✅ вместо 402 — нормальный бизнес-ответ
+	if !subOK {
+		utils.WriteJSON(w, issueKeyResp{
+			Status:     "payment_required",
+			Country:    req.Country,
+			ServerName: server.Name,
+			Payment: &paymentHint{
+				Kind:        "vpn",
+				CountryCode: req.Country,
+			},
+		})
 		return
 	}
 
@@ -77,7 +106,9 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create key in Outline manager.
+	// optional: если хочешь "один ключ на страну", можно сначала поискать существующий в access_keys
+	// и вернуть его, если он есть и не revoked.
+
 	keyName := fmt.Sprintf("tg:%d:%s", req.TgUserID, req.Country)
 	key, err := client.CreateAccessKey(r.Context(), keyName)
 	if err != nil {
@@ -85,7 +116,6 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store mapping for future deactivation.
 	if err := s.keys.Insert(r.Context(), user.ID, req.Country, key.ID, key.AccessURL); err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
@@ -94,8 +124,9 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 	_, _ = s.states.Set(r.Context(), user.ID, domain.StateActive, sql.NullString{String: req.Country, Valid: true})
 
 	utils.WriteJSON(w, issueKeyResp{
-		ServerName:  server.Name,
+		Status:      "ok",
 		Country:     req.Country,
+		ServerName:  server.Name,
 		AccessKeyID: key.ID,
 		AccessURL:   key.AccessURL,
 	})

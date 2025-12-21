@@ -10,7 +10,7 @@ import (
 
 type tgSetStateReq struct {
 	TgUserID        int64   `json:"tg_user_id"`
-	Router          string  `json:"router"` // старое имя
+	Router          string  `json:"router"` // старое имя (бот сейчас шлёт сюда)
 	State           string  `json:"state"`  // новое имя
 	SelectedCountry *string `json:"selected_country"`
 }
@@ -22,7 +22,7 @@ type tgSetStateResp struct {
 
 func (s *Server) handleTelegramSetState(w http.ResponseWriter, r *http.Request) {
 	var req tgSetStateReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TgUserID == 0 || req.State == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TgUserID == 0 {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -37,14 +37,20 @@ func (s *Server) handleTelegramSetState(w http.ResponseWriter, r *http.Request) 
 	}
 
 	user, ok, err := s.users.GetByTelegramID(r.Context(), req.TgUserID)
-	if err != nil || !ok {
+	if err != nil {
+		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	if !ok {
 		http.Error(w, "user not found", http.StatusBadRequest)
 		return
 	}
 
 	var sel sql.NullString
-	if req.SelectedCountry != nil {
+	if req.SelectedCountry != nil && *req.SelectedCountry != "" {
 		sel = sql.NullString{String: *req.SelectedCountry, Valid: true}
+	} else {
+		sel = sql.NullString{}
 	}
 
 	st, err := s.states.Set(r.Context(), user.ID, stVal, sel)

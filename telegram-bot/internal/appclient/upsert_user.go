@@ -16,8 +16,11 @@ type TelegramUpsertReq struct {
 }
 
 type TelegramUpsertResp struct {
-	UserID          int64      `json:"user_id"`
-	State           string     `json:"router"`
+	UserID int64 `json:"user_id"`
+
+	Router string `json:"router"`
+	State  string `json:"state"`
+
 	SelectedCountry *string    `json:"selected_country"`
 	SubscriptionOK  bool       `json:"subscription_ok"`
 	ActiveUntil     *time.Time `json:"active_until"`

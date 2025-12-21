@@ -47,21 +47,22 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Printf("bot authorized as @%s", bot.Self.UserName)
 
 	router := stateRouter.NewRouter(
-		handlers.Start{},              // /start -> MENU
-		handlers.Menu{},               // /menu or "меню" or callback menu
-		handlers.MySubscriptions{},    // "моя подписка"
-		handlers.ChooseVPN{},          // "выбрать страну впн"
-		handlers.OrderNewCountry{},    // "заказать новую страну"
-		handlers.CountryChosen{},      // callback country:xx
-		handlers.CountryRequestText{}, // free text after question
-		handlers.PaymentFlow{},        // precheckout + successful payment (2 payloads)
+		handlers.Start{},
+		handlers.Menu{},
+		handlers.MySubscriptions{},
+		handlers.ChooseVPN{},
+		handlers.OrderNewCountry{},
+		handlers.CountryChosen{},
+		handlers.CountryRequestText{},
+		handlers.PaymentFlow{},
 	)
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30
-	u.AllowedUpdates = []string{"message", "callback_query", "pre_checkout_query"} // важно
+	u.AllowedUpdates = []string{"message", "callback_query", "pre_checkout_query"}
 
 	updates := bot.GetUpdatesChan(u)
 
@@ -74,16 +75,24 @@ func main() {
 	for upd := range updates {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
+		// всегда снимаем "loading"
+		if upd.CallbackQuery != nil {
+			_, _ = bot.Request(tgbotapi.NewCallback(upd.CallbackQuery.ID, ""))
+		}
+
 		sess, ok := buildSession(ctx, upd, app)
 		if !ok {
 			cancel()
 			continue
 		}
 
+		if upd.CallbackQuery != nil {
+			log.Printf("callback data=%q state=%q selected=%v", upd.CallbackQuery.Data, sess.State, sess.SelectedCountry)
+		}
+
 		if err := router.Dispatch(ctx, upd, sess, deps); err != nil {
 			log.Printf("handle error: %v", err)
 		}
-
 		cancel()
 	}
 }
@@ -102,19 +111,21 @@ func buildSession(ctx context.Context, upd tgbotapi.Update, app *appclient.Clien
 		user = upd.Message.From
 	case upd.CallbackQuery != nil:
 		tgID = upd.CallbackQuery.From.ID
-		chatID = upd.CallbackQuery.Message.Chat.ID
+		if upd.CallbackQuery.Message != nil {
+			chatID = upd.CallbackQuery.Message.Chat.ID
+		} else {
+			chatID = tgID
+		}
 		user = upd.CallbackQuery.From
 	case upd.PreCheckoutQuery != nil:
 		tgID = upd.PreCheckoutQuery.From.ID
-		chatID = upd.PreCheckoutQuery.From.ID // fallback; precheckout doesn't have chat id always in lib
+		chatID = tgID
 		user = upd.PreCheckoutQuery.From
 	default:
 		return stateRouter.Session{}, false
 	}
 
-	req := appclient.TelegramUpsertReq{
-		TgUserID: tgID,
-	}
+	req := appclient.TelegramUpsertReq{TgUserID: tgID}
 	if user != nil {
 		if user.UserName != "" {
 			u := user.UserName
@@ -136,13 +147,19 @@ func buildSession(ctx context.Context, upd tgbotapi.Update, app *appclient.Clien
 
 	resp, err := app.TelegramUpsert(ctx, req)
 	if err != nil {
+		log.Printf("TelegramUpsert failed: %v", err)
 		return stateRouter.Session{}, false
+	}
+
+	st := strings.TrimSpace(resp.Router)
+	if st == "" {
+		st = strings.TrimSpace(resp.State)
 	}
 
 	return stateRouter.Session{
 		TgUserID:        tgID,
 		ChatID:          chatID,
-		State:           resp.State,
+		State:           st,
 		SelectedCountry: resp.SelectedCountry,
 		SubscriptionOK:  resp.SubscriptionOK,
 	}, true

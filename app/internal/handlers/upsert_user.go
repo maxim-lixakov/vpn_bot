@@ -12,18 +12,19 @@ import (
 )
 
 type tgUpsertReq struct {
-	TgUserID  int64   `json:"tg_user_id"`
-	Username  *string `json:"username"`
-	FirstName *string `json:"first_name"`
-	LastName  *string `json:"last_name"`
-	Language  *string `json:"language"`
-	// optional fields - ignored by app for now
-	IsPremium *bool `json:"is_premium"`
+	TgUserID     int64   `json:"tg_user_id"`
+	Username     *string `json:"username"`
+	FirstName    *string `json:"first_name"`
+	LastName     *string `json:"last_name"`
+	LanguageCode *string `json:"language_code"`
+	Phone        *string `json:"phone"`
 }
 
 type tgUpsertResp struct {
-	UserID          int64      `json:"user_id"`
-	State           string     `json:"state"`
+	UserID int64 `json:"user_id"`
+
+	State string `json:"state"`
+
 	SelectedCountry *string    `json:"selected_country"`
 	SubscriptionOK  bool       `json:"subscription_ok"`
 	ActiveUntil     *time.Time `json:"active_until"`
@@ -31,33 +32,44 @@ type tgUpsertResp struct {
 
 func (s *Server) handleTelegramUpsert(w http.ResponseWriter, r *http.Request) {
 	var req tgUpsertReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad json", http.StatusBadRequest)
-		return
-	}
-	if req.TgUserID == 0 {
-		http.Error(w, "tg_user_id is required", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TgUserID == 0 {
+		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 
-	user, err := s.users.UpsertByTelegram(r.Context(), repo.User{
-		TgUserID:     req.TgUserID,
-		Username:     toNullString(req.Username),
-		FirstName:    toNullString(req.FirstName),
-		LastName:     toNullString(req.LastName),
-		LanguageCode: toNullString(req.Language),
-		Phone:        sql.NullString{}, // phone can be filled later if you implement contact sharing
-	})
+	u := repo.User{TgUserID: req.TgUserID}
+
+	if req.Username != nil && *req.Username != "" {
+		u.Username = sql.NullString{String: *req.Username, Valid: true}
+	}
+	if req.FirstName != nil && *req.FirstName != "" {
+		u.FirstName = sql.NullString{String: *req.FirstName, Valid: true}
+	}
+	if req.LastName != nil && *req.LastName != "" {
+		u.LastName = sql.NullString{String: *req.LastName, Valid: true}
+	}
+	if req.LanguageCode != nil && *req.LanguageCode != "" {
+		u.LanguageCode = sql.NullString{String: *req.LanguageCode, Valid: true}
+	}
+	if req.Phone != nil && *req.Phone != "" {
+		u.Phone = sql.NullString{String: *req.Phone, Valid: true}
+	}
+
+	user, err := s.users.UpsertByTelegram(r.Context(), u)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 
-	// Ensure we have a state row (default MENU).
 	st, err := s.states.EnsureDefault(r.Context(), user.ID, domain.StateMenu)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
+	}
+
+	// гарантия
+	if st.State == "" {
+		st, _ = s.states.Set(r.Context(), user.ID, domain.StateMenu, st.SelectedCountry)
 	}
 
 	var sel *string
@@ -66,13 +78,13 @@ func (s *Server) handleTelegramUpsert(w http.ResponseWriter, r *http.Request) {
 		sel = &v
 	}
 
+	// subscription_ok только если selected_country выбран
 	now := time.Now().UTC()
-	okSub := false
+	subOK := false
 	var until time.Time
 
-	// subscription_ok here means: active vpn subscription for currently selected country (if selected).
 	if sel != nil {
-		until, okSub, err = s.subs.GetActiveUntilFor(
+		until, subOK, err = s.subs.GetActiveUntilFor(
 			r.Context(),
 			user.ID,
 			"vpn",
@@ -95,14 +107,7 @@ func (s *Server) handleTelegramUpsert(w http.ResponseWriter, r *http.Request) {
 		UserID:          user.ID,
 		State:           st.State,
 		SelectedCountry: sel,
-		SubscriptionOK:  okSub,
+		SubscriptionOK:  subOK,
 		ActiveUntil:     au,
 	})
-}
-
-func toNullString(s *string) sql.NullString {
-	if s == nil || *s == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: *s, Valid: true}
 }

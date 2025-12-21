@@ -22,15 +22,20 @@ func (h OrderNewCountry) CanHandle(u tgbotapi.Update, s router.Session) bool {
 func (h OrderNewCountry) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
 	// payment step (skipped by env for now)
 	if d.Cfg.Payments.DevSkipNewCountryPayment || d.Cfg.Payments.ProviderToken == "" {
+		// записываем факт оплаты "запроса страны"
 		_, _ = d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
-			TgUserID:                s.TgUserID,
-			AmountMinor:             d.Cfg.Payments.NewCountryPriceMinor,
-			Currency:                d.Cfg.Payments.Currency,
-			Kind:                    "vpn",
+			TgUserID:    s.TgUserID,
+			Kind:        "country_request",
+			CountryCode: nil,
+
+			AmountMinor: d.Cfg.Payments.NewCountryPriceMinor,
+			Currency:    d.Cfg.Payments.Currency,
+
 			TelegramPaymentChargeID: "dev-bypass",
 			ProviderPaymentChargeID: "dev-bypass",
 		})
 
+		// переводим в состояние ожидания текста
 		_ = d.App.TelegramSetState(ctx, s.TgUserID, "AWAIT_COUNTRY_REQUEST_TEXT", nil)
 
 		msg := tgbotapi.NewMessage(s.ChatID, "Какую страну ты бы хотел добавить?")
@@ -41,6 +46,7 @@ func (h OrderNewCountry) Handle(ctx context.Context, u tgbotapi.Update, s router
 
 	// later: send invoice for 400 and set state AWAIT_NEW_COUNTRY_PAYMENT
 	_ = d.App.TelegramSetState(ctx, s.TgUserID, "AWAIT_NEW_COUNTRY_PAYMENT", nil)
+
 	msg := tgbotapi.NewMessage(s.ChatID, "Оплата 400р пока не реализована (подключим позже).")
 	msg.ReplyMarkup = menu.Keyboard()
 	_, _ = d.Bot.Send(msg)

@@ -6,12 +6,11 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
+	"vpn-bot/internal/appclient"
 	"vpn-bot/internal/menu"
 	"vpn-bot/internal/router"
 )
 
-// issueKeyNow issues Outline key via app and sends instructions to the user.
-// It expects s.SelectedCountry != nil.
 func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 	if s.SelectedCountry == nil {
 		msg := tgbotapi.NewMessage(s.ChatID, "Не выбрана страна. Нажми /start")
@@ -28,8 +27,54 @@ func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 		return nil
 	}
 
+	if resp.Status == "payment_required" {
+		// dev-bypass или реальная оплата
+		if d.Cfg.Payments.DevSkipVPNPayment || d.Cfg.Payments.ProviderToken == "" {
+			// сохраняем оплату в app
+			_, err := d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
+				TgUserID:    s.TgUserID,
+				Kind:        "vpn",
+				CountryCode: s.SelectedCountry,
+				AmountMinor: d.Cfg.Payments.VPNPriceMinor,
+				Currency:    d.Cfg.Payments.Currency,
+
+				TelegramPaymentChargeID: "dev-bypass",
+				ProviderPaymentChargeID: "dev-bypass",
+			})
+			if err != nil {
+				msg := tgbotapi.NewMessage(s.ChatID, "Не смог сохранить оплату: "+err.Error())
+				msg.ReplyMarkup = menu.Keyboard()
+				_, _ = d.Bot.Send(msg)
+				return nil
+			}
+
+			// снова пытаемся получить ключ
+			resp2, err := d.App.IssueKey(ctx, s.TgUserID, *s.SelectedCountry)
+			if err != nil || resp2.Status != "ok" {
+				msg := tgbotapi.NewMessage(s.ChatID, "Оплата сохранена, но ключ пока не выдался. Попробуй ещё раз.")
+				msg.ReplyMarkup = menu.Keyboard()
+				_, _ = d.Bot.Send(msg)
+				return nil
+			}
+			resp = resp2
+		} else {
+			// тут будет invoice (позже)
+			msg := tgbotapi.NewMessage(s.ChatID, "Нужна оплата 100р/мес. (invoice подключим позже).")
+			msg.ReplyMarkup = menu.Keyboard()
+			_, _ = d.Bot.Send(msg)
+			return nil
+		}
+	}
+
+	if resp.Status != "ok" {
+		msg := tgbotapi.NewMessage(s.ChatID, "Неожиданный ответ от сервера.")
+		msg.ReplyMarkup = menu.Keyboard()
+		_, _ = d.Bot.Send(msg)
+		return nil
+	}
+
 	text := fmt.Sprintf(
-		"Сервер: %s\nСтрана: %s\n\nКлюч (скопируй и вставь в Outline):\n%s\n\nСкачать Outline Client:\n%s",
+		"Сервер: %s\nСтрана: %s\n\nКлюч:\n%s\n\nСкачать Outline Client:\n%s",
 		resp.ServerName,
 		resp.Country,
 		resp.AccessURL,

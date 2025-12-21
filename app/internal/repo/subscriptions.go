@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -25,28 +26,22 @@ type Subscription struct {
 type SubscriptionsRepo struct{ db *sql.DB }
 
 type SubscriptionsRepoInterface interface {
-	// для "выбрать страну впн" + issue-key
 	GetActiveUntilFor(ctx context.Context, userID int64, kind string, country sql.NullString, now time.Time) (time.Time, bool, error)
-
-	// для "моя подписка"
 	ListByUser(ctx context.Context, userID int64) ([]Subscription, error)
-
-	// для mark-paid
 	MarkPaid(ctx context.Context, args MarkPaidArgs) (activeUntil time.Time, err error)
 }
 
 func NewSubscriptionsRepo(db *sql.DB) SubscriptionsRepoInterface { return &SubscriptionsRepo{db: db} }
 
 func (r *SubscriptionsRepo) GetActiveUntilFor(ctx context.Context, userID int64, kind string, country sql.NullString, now time.Time) (time.Time, bool, error) {
-	// country_code: либо равен, либо оба NULL
 	q := `
 		SELECT active_until
 		FROM subscriptions
 		WHERE user_id=$1 AND status='paid' AND kind=$2
 		  AND (
-		      (country_code IS NULL AND $3::text IS NULL) OR
-		      (country_code = $3)
-		  )
+		        ($3::text IS NULL AND country_code IS NULL) OR
+		        (country_code = $3::text)
+		      )
 		ORDER BY active_until DESC
 		LIMIT 1
 	`
@@ -54,8 +49,11 @@ func (r *SubscriptionsRepo) GetActiveUntilFor(ctx context.Context, userID int64,
 	var until time.Time
 	var argCountry any = nil
 	if country.Valid {
-		argCountry = country.String
+		argCountry = strings.TrimSpace(strings.ToLower(country.String))
 	}
+
+	kind = strings.TrimSpace(strings.ToLower(kind))
+
 	err := r.db.QueryRowContext(ctx, q, userID, kind, argCountry).Scan(&until)
 	if err == sql.ErrNoRows {
 		return time.Time{}, false, nil
@@ -109,24 +107,29 @@ type MarkPaidArgs struct {
 
 func (r *SubscriptionsRepo) MarkPaid(ctx context.Context, args MarkPaidArgs) (time.Time, error) {
 	now := args.PaidAt
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
+	args.Kind = strings.TrimSpace(strings.ToLower(args.Kind))
+	if args.CountryCode.Valid {
+		args.CountryCode.String = strings.TrimSpace(strings.ToLower(args.CountryCode.String))
+	}
 
 	latestUntil, _, err := r.GetActiveUntilFor(ctx, args.UserID, args.Kind, args.CountryCode, now)
 	if err != nil {
 		return time.Time{}, err
 	}
 
-	// продление по цепочке для конкретной связки kind+country
 	base := now
 	if latestUntil.After(now) {
 		base = latestUntil
 	}
 
-	// политика по срокам
 	activeUntil := base
 	if args.Kind == "vpn" {
-		activeUntil = base.AddDate(0, 1, 0) // +1 месяц
+		activeUntil = base.AddDate(0, 1, 0)
 	} else {
-		// для country_request можно ставить paid_at (не “активная” подписка, просто факт оплаты)
 		activeUntil = now
 	}
 
@@ -144,7 +147,7 @@ func (r *SubscriptionsRepo) MarkPaid(ctx context.Context, args MarkPaidArgs) (ti
 		VALUES ($1,$2,$3,'paid',$4,$5,$6,$7,$8,$9,$10)
 	`,
 		args.UserID, args.Kind, cc,
-		args.Provider, args.AmountMinor, args.Currency, args.PaidAt, activeUntil,
+		args.Provider, args.AmountMinor, args.Currency, now, activeUntil,
 		nullStringToAny(args.TelegramPaymentChargeID), nullStringToAny(args.ProviderPaymentChargeID),
 	)
 

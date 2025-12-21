@@ -7,10 +7,10 @@ import (
 )
 
 const (
-	BtnMySubs       = "моя подписка"
-	BtnChooseVPN    = "выбрать страну впн"
-	BtnOrderCountry = "заказать новую страну"
-	BtnMenu         = "меню"
+	BtnMySubs       = "моя подписка ℹ️"
+	BtnChooseVPN    = "выбрать страну впн 📰"
+	BtnOrderCountry = "заказать новую страну 🔎"
+	BtnMenu         = "меню 📱"
 )
 
 func Keyboard() tgbotapi.ReplyKeyboardMarkup {
