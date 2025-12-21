@@ -26,7 +26,7 @@ func (s *Server) handleTelegramSetState(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	user, ok, err := s.users.GetByTelegramID(r.Context(), req.TgUserID)
+	user, ok, err := s.usersRepo.GetByTelegramID(r.Context(), req.TgUserID)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
@@ -43,7 +43,7 @@ func (s *Server) handleTelegramSetState(w http.ResponseWriter, r *http.Request) 
 		sel = sql.NullString{}
 	}
 
-	st, err := s.states.Set(r.Context(), user.ID, req.State, sel)
+	st, err := s.statesRepo.Set(r.Context(), user.ID, req.State, sel)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return

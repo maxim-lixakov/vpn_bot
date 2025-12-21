@@ -55,13 +55,13 @@ func (s *Server) handleTelegramUpsert(w http.ResponseWriter, r *http.Request) {
 		u.Phone = sql.NullString{String: *req.Phone, Valid: true}
 	}
 
-	user, err := s.users.UpsertByTelegram(r.Context(), u)
+	user, err := s.usersRepo.UpsertByTelegram(r.Context(), u)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 
-	st, err := s.states.EnsureDefault(r.Context(), user.ID, domain.StateMenu)
+	st, err := s.statesRepo.EnsureDefault(r.Context(), user.ID, domain.StateMenu)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
@@ -69,7 +69,7 @@ func (s *Server) handleTelegramUpsert(w http.ResponseWriter, r *http.Request) {
 
 	// гарантия
 	if st.State == "" {
-		st, _ = s.states.Set(r.Context(), user.ID, domain.StateMenu, st.SelectedCountry)
+		st, _ = s.statesRepo.Set(r.Context(), user.ID, domain.StateMenu, st.SelectedCountry)
 	}
 
 	var sel *string
@@ -84,7 +84,7 @@ func (s *Server) handleTelegramUpsert(w http.ResponseWriter, r *http.Request) {
 	var until time.Time
 
 	if sel != nil {
-		until, subOK, err = s.subs.GetActiveUntilFor(
+		until, subOK, err = s.subsRepo.GetActiveUntilFor(
 			r.Context(),
 			user.ID,
 			"vpn",

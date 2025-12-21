@@ -58,13 +58,13 @@ func (s *Server) handleTelegramMarkPaid(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	user, ok, err := s.users.GetByTelegramID(r.Context(), req.TgUserID)
+	user, ok, err := s.usersRepo.GetByTelegramID(r.Context(), req.TgUserID)
 	if err != nil || !ok {
 		http.Error(w, "user not found", http.StatusBadRequest)
 		return
 	}
 
-	until, err := s.subs.MarkPaid(r.Context(), repo.MarkPaidArgs{
+	until, err := s.subsRepo.MarkPaid(r.Context(), repo.MarkPaidArgs{
 		UserID:                  user.ID,
 		Kind:                    kind,
 		CountryCode:             cc,
@@ -82,10 +82,10 @@ func (s *Server) handleTelegramMarkPaid(w http.ResponseWriter, r *http.Request) 
 
 	// state меняем только для vpn (для country_request пусть остаётся как есть)
 	if kind == "vpn" {
-		_, err := s.states.Get(r.Context(), user.ID)
+		_, err := s.statesRepo.Get(r.Context(), user.ID)
 		if err == nil {
 			// проставим выбранную страну явно
-			_, _ = s.states.Set(r.Context(), user.ID, domain.StateIssueKey, cc)
+			_, _ = s.statesRepo.Set(r.Context(), user.ID, domain.StateIssueKey, cc)
 		}
 	}
 

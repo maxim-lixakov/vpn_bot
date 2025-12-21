@@ -15,11 +15,11 @@ type Server struct {
 	cfg config.Config
 	db  *sql.DB
 
-	users        repo.UsersRepoInterface
-	states       repo.StateRepoInterface
-	subs         repo.SubscriptionsRepoInterface
-	keys         repo.AccessKeysRepoInterface
-	countriesAdd repo.CountriesToAddRepoInterface
+	usersRepo        repo.UsersRepoInterface
+	statesRepo       repo.StateRepoInterface
+	subsRepo         repo.SubscriptionsRepoInterface
+	keysRepo         repo.AccessKeysRepoInterface
+	countriesAddRepo repo.CountriesToAddRepoInterface
 
 	clients map[string]outline.OutlineClientInterface
 }
@@ -31,14 +31,14 @@ func New(cfg config.Config, db *sql.DB) *Server {
 	}
 
 	return &Server{
-		cfg:          cfg,
-		db:           db,
-		users:        repo.NewUsersRepo(db),
-		states:       repo.NewStateRepo(db),
-		subs:         repo.NewSubscriptionsRepo(db),
-		keys:         repo.NewAccessKeysRepo(db),
-		countriesAdd: repo.NewCountriesToAddRepo(db),
-		clients:      clients,
+		cfg:              cfg,
+		db:               db,
+		usersRepo:        repo.NewUsersRepo(db),
+		statesRepo:       repo.NewStateRepo(db),
+		subsRepo:         repo.NewSubscriptionsRepo(db),
+		keysRepo:         repo.NewAccessKeysRepo(db),
+		countriesAddRepo: repo.NewCountriesToAddRepo(db),
+		clients:          clients,
 	}
 }
 
