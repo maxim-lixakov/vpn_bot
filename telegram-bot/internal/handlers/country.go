@@ -51,7 +51,7 @@ func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.S
 	// 2) no active subscription -> payment 100 (skip by env for now)
 	_ = d.App.TelegramSetState(ctx, s.TgUserID, "AWAIT_VPN_PAYMENT", &country)
 
-	if d.Cfg.Payments.DevSkipVPNPayment || d.Cfg.Payments.ProviderToken == "" {
+	if d.Cfg.Payments.ProviderToken == "" {
 		_, _ = d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
 			TgUserID:    s.TgUserID,
 			Kind:        "vpn",

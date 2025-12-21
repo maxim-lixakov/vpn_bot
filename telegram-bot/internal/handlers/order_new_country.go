@@ -21,7 +21,7 @@ func (h OrderNewCountry) CanHandle(u tgbotapi.Update, s router.Session) bool {
 
 func (h OrderNewCountry) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
 	// payment step (skipped by env for now)
-	if d.Cfg.Payments.DevSkipNewCountryPayment || d.Cfg.Payments.ProviderToken == "" {
+	if d.Cfg.Payments.ProviderToken == "" {
 		// записываем факт оплаты "запроса страны"
 		_, _ = d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
 			TgUserID:    s.TgUserID,

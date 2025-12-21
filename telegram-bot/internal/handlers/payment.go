@@ -116,7 +116,7 @@ func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 
 	if resp.Status == "payment_required" {
 		// dev-bypass или реальная оплата
-		if d.Cfg.Payments.DevSkipVPNPayment || d.Cfg.Payments.ProviderToken == "" {
+		if d.Cfg.Payments.ProviderToken == "" {
 			// сохраняем оплату в app
 			_, err := d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
 				TgUserID:    s.TgUserID,
