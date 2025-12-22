@@ -177,13 +177,9 @@ func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 		return err
 	}
 
-	// --- шаги с картинками ---
-	// Папка с картинками должна существовать в контейнере.
-	// Ожидаемый путь: telegram-bot/internal/images/*.png (см. Dockerfile ниже)
 	baseDir := "internal/images"
 
 	if err := sendTextAndImage(d.Bot, s.ChatID, "После установки приложения, откройте его.", filepath.Join(baseDir, "step1.png")); err != nil {
-		// не валим весь флоу
 		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step1.png: "+err.Error()))
 	}
 	if err := sendTextAndImage(d.Bot, s.ChatID, "Вставьте сюда скопированный ключ.", filepath.Join(baseDir, "step2.png")); err != nil {
