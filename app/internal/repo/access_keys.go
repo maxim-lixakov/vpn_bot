@@ -20,7 +20,8 @@ type AccessKeysRepo struct{ db *sql.DB }
 
 type AccessKeysRepoInterface interface {
 	GetActive(ctx context.Context, userID int64, country string) (AccessKey, bool, error)
-	Insert(ctx context.Context, userID int64, country, outlineKeyID, accessURL string) error
+	Insert(ctx context.Context, userID int64, country, outlineKeyID, accessURL string) (int64, error)
+	Revoke(ctx context.Context, id int64, at time.Time) error
 }
 
 func NewAccessKeysRepo(db *sql.DB) AccessKeysRepoInterface { return &AccessKeysRepo{db: db} }
@@ -44,10 +45,24 @@ func (r *AccessKeysRepo) GetActive(ctx context.Context, userID int64, country st
 	return k, true, nil
 }
 
-func (r *AccessKeysRepo) Insert(ctx context.Context, userID int64, country, outlineKeyID, accessURL string) error {
-	_, err := r.db.ExecContext(ctx, `
+func (r *AccessKeysRepo) Insert(ctx context.Context, userID int64, country, outlineKeyID, accessURL string) (int64, error) {
+	var id int64
+	err := r.db.QueryRowContext(ctx, `
 		INSERT INTO access_keys(user_id, country_code, outline_key_id, access_url)
 		VALUES ($1,$2,$3,$4)
-	`, userID, country, outlineKeyID, accessURL)
+		RETURNING id
+	`, userID, country, outlineKeyID, accessURL).Scan(&id)
+	return id, err
+}
+
+func (r *AccessKeysRepo) Revoke(ctx context.Context, id int64, at time.Time) error {
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE access_keys
+		SET revoked_at = $2
+		WHERE id = $1 AND revoked_at IS NULL
+	`, id, at)
 	return err
 }
