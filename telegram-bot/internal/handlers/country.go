@@ -24,35 +24,61 @@ func (h CountryChosen) CanHandle(u tgbotapi.Update, s router.Session) bool {
 	if !strings.HasPrefix(u.CallbackQuery.Data, "country:") {
 		return false
 	}
-	return s.State == "CHOOSE_VPN_COUNTRY"
+	return s.State == "CHOOSE_VPN_COUNTRY" || s.State == "CHOOSE_VPN_COUNTRY_PROMOCODE"
+}
+
+func sendActiveSubscriptionMessage(bot *tgbotapi.BotAPI, chatID int64, country string, activeUntil appclient.TelegramCountryStatusResp) {
+	msg := tgbotapi.NewMessage(
+		chatID,
+		fmt.Sprintf("У Вас уже есть подписка на %s. Активна до: %s",
+			country,
+			activeUntil.ActiveUntil.Format("2006-01-02 15:04"),
+		),
+	)
+	msg.ReplyMarkup = menu.Keyboard()
+	_, _ = bot.Send(msg)
 }
 
 func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
 	country := strings.TrimPrefix(u.CallbackQuery.Data, "country:")
 	_, _ = d.Bot.Request(tgbotapi.NewCallback(u.CallbackQuery.ID, "Ок"))
 
-	// 1) check active subscription for this country
+	// Проверяем, есть ли уже активная подписка на эту страну
 	st, err := d.App.TelegramCountryStatus(ctx, s.TgUserID, country)
 	if err != nil {
 		msg := tgbotapi.NewMessage(s.ChatID, "Не смог проверить подписку: "+err.Error())
 		msg.ReplyMarkup = menu.Keyboard()
 		_, _ = d.Bot.Send(msg)
+		_ = d.App.TelegramSetState(ctx, s.TgUserID, "MENU", nil)
 		return nil
 	}
 
 	if st.Active {
-		msg := tgbotapi.NewMessage(
-			s.ChatID,
-			fmt.Sprintf("У тебя уже есть подписка на %s. Активна до: %s",
-				country,
-				st.ActiveUntil.Format("2006-01-02 15:04"),
-			),
-		)
-		msg.ReplyMarkup = menu.Keyboard()
-		_, _ = d.Bot.Send(msg)
-
+		// Уже есть активная подписка на эту страну
+		// Если это выбор страны после промокода - откатываем промокод (без указания кода - откатим последний)
+		if s.State == "CHOOSE_VPN_COUNTRY_PROMOCODE" {
+			_ = d.App.TelegramPromocodeRollback(ctx, s.TgUserID, "")
+		}
+		sendActiveSubscriptionMessage(d.Bot, s.ChatID, country, st)
 		_ = d.App.TelegramSetState(ctx, s.TgUserID, "MENU", nil)
 		return nil
+	}
+
+	// Если это выбор страны после промокода - обновляем подписку и выдаём ключ
+	if s.State == "CHOOSE_VPN_COUNTRY_PROMOCODE" {
+		// Нет активной подписки - обновляем подписку от промокода и выдаём ключ
+		if err := d.App.TelegramUpdatePromocodeSubscription(ctx, s.TgUserID, country); err != nil {
+			msg := tgbotapi.NewMessage(s.ChatID, "Не смог обновить подписку: "+err.Error())
+			msg.ReplyMarkup = menu.Keyboard()
+			_, _ = d.Bot.Send(msg)
+			_ = d.App.TelegramSetState(ctx, s.TgUserID, "MENU", nil)
+			return nil
+		}
+
+		ss := s
+		ss.SelectedCountry = &country
+		_ = d.App.TelegramSetState(ctx, s.TgUserID, "MENU", nil)
+		return IssueKeyNow(ctx, ss, d)
 	}
 
 	// 2) no active subscription -> payment 100
@@ -76,7 +102,7 @@ func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.S
 
 		ss := s
 		ss.SelectedCountry = &country
-		return issueKeyNow(ctx, ss, d)
+		return IssueKeyNow(ctx, ss, d)
 	}
 
 	err = payments.SendVPNInvoice(

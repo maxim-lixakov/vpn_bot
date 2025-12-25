@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ type tgMarkPaidReq struct {
 	Currency                string `json:"currency"`
 	TelegramPaymentChargeID string `json:"telegram_payment_charge_id"`
 	ProviderPaymentChargeID string `json:"provider_payment_charge_id"`
+	Months                  int    `json:"months"` // количество месяцев (0 = использовать дефолт)
 }
 
 type tgMarkPaidResp struct {
@@ -46,6 +48,11 @@ func (s *Server) handleTelegramMarkPaid(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Проверяем, является ли это промокодом (до обработки country_code)
+	// Промокод определяется по ProviderPaymentChargeID == "promocode" или TelegramPaymentChargeID == "promocode"
+	isPromocode := strings.TrimSpace(req.ProviderPaymentChargeID) == "promocode" ||
+		strings.TrimSpace(req.TelegramPaymentChargeID) == "promocode"
+
 	var cc sql.NullString
 	if req.CountryCode != nil {
 		v := strings.TrimSpace(strings.ToLower(*req.CountryCode))
@@ -53,9 +60,16 @@ func (s *Server) handleTelegramMarkPaid(w http.ResponseWriter, r *http.Request) 
 			cc = sql.NullString{String: v, Valid: true}
 		}
 	}
-	if kind == "vpn" && !cc.Valid {
-		http.Error(w, "country_code is required for vpn", http.StatusBadRequest)
-		return
+
+	// Для VPN подписки country_code обязателен, кроме случаев когда это промокод
+	// В этом случае country_code может быть пустым (NULL) - подписка будет без привязки к стране
+	if kind == "vpn" {
+		if !cc.Valid && !isPromocode {
+			log.Printf("mark_paid: kind=vpn, country_code invalid, isPromocode=%v, ProviderPaymentChargeID=%q, TelegramPaymentChargeID=%q",
+				isPromocode, req.ProviderPaymentChargeID, req.TelegramPaymentChargeID)
+			http.Error(w, "country_code is required for vpn", http.StatusBadRequest)
+			return
+		}
 	}
 
 	user, ok, err := s.usersRepo.GetByTelegramID(r.Context(), req.TgUserID)
@@ -77,6 +91,7 @@ func (s *Server) handleTelegramMarkPaid(w http.ResponseWriter, r *http.Request) 
 		TelegramPaymentChargeID: sql.NullString{String: req.TelegramPaymentChargeID, Valid: strings.TrimSpace(req.TelegramPaymentChargeID) != ""},
 		ProviderPaymentChargeID: sql.NullString{String: req.ProviderPaymentChargeID, Valid: strings.TrimSpace(req.ProviderPaymentChargeID) != ""},
 		PaidAt:                  time.Now().UTC(),
+		Months:                  req.Months,
 	})
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)

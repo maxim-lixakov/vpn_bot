@@ -28,10 +28,13 @@ type SubscriptionsRepo struct{ db *sql.DB }
 
 type SubscriptionsRepoInterface interface {
 	GetActiveUntilFor(ctx context.Context, userID int64, kind string, country sql.NullString, now time.Time) (time.Time, bool, error)
+	HasAnyActiveSubscription(ctx context.Context, userID int64, kind string, now time.Time) (bool, error)
 	ListByUser(ctx context.Context, userID int64) ([]Subscription, error)
 	MarkPaid(ctx context.Context, args MarkPaidArgs) (activeUntil time.Time, err error)
 	AttachAccessKeyToLatestPaid(ctx context.Context, userID int64, kind string, country sql.NullString, accessKeyID int64) error
 	GetLatestPaidByKind(ctx context.Context, userID int64, kind string) (int64, bool, error)
+	UpdateCountryCodeForPromocode(ctx context.Context, userID int64, country string) error
+	DeletePromocodeSubscription(ctx context.Context, userID int64) error
 }
 
 func NewSubscriptionsRepo(db *sql.DB) SubscriptionsRepoInterface { return &SubscriptionsRepo{db: db} }
@@ -65,6 +68,23 @@ func (r *SubscriptionsRepo) GetActiveUntilFor(ctx context.Context, userID int64,
 		return time.Time{}, false, err
 	}
 	return until, until.After(now), nil
+}
+
+// HasAnyActiveSubscription проверяет, есть ли у пользователя хотя бы одна активная подписка указанного вида (любая страна)
+func (r *SubscriptionsRepo) HasAnyActiveSubscription(ctx context.Context, userID int64, kind string, now time.Time) (bool, error) {
+	kind = strings.TrimSpace(strings.ToLower(kind))
+
+	var count int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM subscriptions
+		WHERE user_id=$1 AND status='paid' AND kind=$2 AND active_until > $3
+		LIMIT 1
+	`, userID, kind, now).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (r *SubscriptionsRepo) ListByUser(ctx context.Context, userID int64) ([]Subscription, error) {
@@ -109,6 +129,7 @@ type MarkPaidArgs struct {
 	TelegramPaymentChargeID sql.NullString
 	ProviderPaymentChargeID sql.NullString
 	PaidAt                  time.Time
+	Months                  int // количество месяцев (0 = использовать дефолт по kind)
 }
 
 func (r *SubscriptionsRepo) MarkPaid(ctx context.Context, args MarkPaidArgs) (time.Time, error) {
@@ -134,7 +155,11 @@ func (r *SubscriptionsRepo) MarkPaid(ctx context.Context, args MarkPaidArgs) (ti
 
 	activeUntil := base
 	if args.Kind == "vpn" {
-		activeUntil = base.AddDate(0, 1, 0)
+		months := args.Months
+		if months <= 0 {
+			months = 1 // дефолт для VPN
+		}
+		activeUntil = base.AddDate(0, months, 0)
 	} else {
 		activeUntil = now
 	}
@@ -209,6 +234,47 @@ func (r *SubscriptionsRepo) GetLatestPaidByKind(ctx context.Context, userID int6
 		return 0, false, err
 	}
 	return subID, true, nil
+}
+
+// UpdateCountryCodeForPromocode обновляет country_code в последней подписке от промокода (без country_code)
+func (r *SubscriptionsRepo) UpdateCountryCodeForPromocode(ctx context.Context, userID int64, country string) error {
+	country = strings.TrimSpace(strings.ToLower(country))
+
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE subscriptions
+		SET country_code = $2
+		WHERE id = (
+			SELECT id
+			FROM subscriptions
+			WHERE user_id=$1 
+			  AND status='paid' 
+			  AND kind='vpn'
+			  AND country_code IS NULL
+			  AND provider_payment_charge_id = 'promocode'
+			ORDER BY paid_at DESC, id DESC
+			LIMIT 1
+		)
+	`, userID, country)
+	return err
+}
+
+// DeletePromocodeSubscription удаляет последнюю подписку, созданную промокодом
+// Ищет подписку с provider_payment_charge_id = 'promocode', даже если country_code уже установлен
+func (r *SubscriptionsRepo) DeletePromocodeSubscription(ctx context.Context, userID int64) error {
+	_, err := r.db.ExecContext(ctx, `
+		DELETE FROM subscriptions
+		WHERE id = (
+			SELECT id
+			FROM subscriptions
+			WHERE user_id=$1 
+			  AND status='paid' 
+			  AND kind='vpn'
+			  AND provider_payment_charge_id = 'promocode'
+			ORDER BY paid_at DESC, id DESC
+			LIMIT 1
+		)
+	`, userID)
+	return err
 }
 
 func nullStringToAny(ns sql.NullString) any {

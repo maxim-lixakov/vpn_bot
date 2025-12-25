@@ -54,6 +54,10 @@ func main() {
 		handlers.OrderNewCountry{},
 		handlers.CountryChosen{},
 		handlers.CountryRequestText{},
+		handlers.UsePromocode{},
+		handlers.PromocodeText{},
+		handlers.SendFeedback{},
+		handlers.FeedbackText{},
 		handlers.PaymentFlow{},
 	)
 
