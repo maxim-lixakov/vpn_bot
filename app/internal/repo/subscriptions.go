@@ -31,6 +31,7 @@ type SubscriptionsRepoInterface interface {
 	ListByUser(ctx context.Context, userID int64) ([]Subscription, error)
 	MarkPaid(ctx context.Context, args MarkPaidArgs) (activeUntil time.Time, err error)
 	AttachAccessKeyToLatestPaid(ctx context.Context, userID int64, kind string, country sql.NullString, accessKeyID int64) error
+	GetLatestPaidByKind(ctx context.Context, userID int64, kind string) (int64, bool, error)
 }
 
 func NewSubscriptionsRepo(db *sql.DB) SubscriptionsRepoInterface { return &SubscriptionsRepo{db: db} }
@@ -187,6 +188,27 @@ func (r *SubscriptionsRepo) AttachAccessKeyToLatestPaid(ctx context.Context, use
 		)
 	`, userID, kind, cc, accessKeyID)
 	return err
+}
+
+func (r *SubscriptionsRepo) GetLatestPaidByKind(ctx context.Context, userID int64, kind string) (int64, bool, error) {
+	kind = strings.TrimSpace(strings.ToLower(kind))
+
+	var subID int64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id
+		FROM subscriptions
+		WHERE user_id=$1 AND status='paid' AND kind=$2
+		ORDER BY paid_at DESC, id DESC
+		LIMIT 1
+	`, userID, kind).Scan(&subID)
+
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return subID, true, nil
 }
 
 func nullStringToAny(ns sql.NullString) any {

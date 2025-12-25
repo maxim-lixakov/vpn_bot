@@ -5,9 +5,9 @@ import (
 )
 
 const (
-	BtnMySubs       = "моя подписка ℹ️"
-	BtnChooseVPN    = "выбрать страну впн 🇺🇳"
-	BtnOrderCountry = "заказать новую страну ➡️"
+	BtnMySubs       = "Моя подписка ℹ️"
+	BtnChooseVPN    = "Выбрать страну впн 🇺🇳"
+	BtnOrderCountry = "Заказать новую страну ➡️"
 )
 
 func Keyboard() tgbotapi.ReplyKeyboardMarkup {

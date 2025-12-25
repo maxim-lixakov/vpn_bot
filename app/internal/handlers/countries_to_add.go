@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -35,7 +36,19 @@ func (s *Server) handleTelegramCountriesToAdd(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := s.countriesAddRepo.Insert(r.Context(), user.ID, req.Text); err != nil {
+	// Находим последнюю подписку kind='country_request' для привязки
+	var subscriptionID sql.NullInt64
+	subID, found, err := s.subsRepo.GetLatestPaidByKind(r.Context(), user.ID, "country_request")
+	if err != nil {
+		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	if found {
+		subscriptionID = sql.NullInt64{Int64: subID, Valid: true}
+	}
+	// Если подписки нет - subscriptionID останется Invalid (NULL), это допустимо
+
+	if err := s.countriesAddRepo.Insert(r.Context(), user.ID, subscriptionID, req.Text); err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
