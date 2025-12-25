@@ -15,11 +15,13 @@ type Server struct {
 	cfg config.Config
 	db  *sql.DB
 
-	usersRepo        repo.UsersRepoInterface
-	statesRepo       repo.StateRepoInterface
-	subsRepo         repo.SubscriptionsRepoInterface
-	keysRepo         repo.AccessKeysRepoInterface
-	countriesAddRepo repo.CountriesToAddRepoInterface
+	usersRepo           repo.UsersRepoInterface
+	statesRepo          repo.StateRepoInterface
+	subsRepo            repo.SubscriptionsRepoInterface
+	keysRepo            repo.AccessKeysRepoInterface
+	countriesAddRepo    repo.CountriesToAddRepoInterface
+	promocodesRepo      repo.PromocodesRepoInterface
+	promocodeUsagesRepo repo.PromocodeUsagesRepoInterface
 
 	clients map[string]outline.OutlineClientInterface
 }
@@ -31,14 +33,16 @@ func New(cfg config.Config, db *sql.DB) *Server {
 	}
 
 	return &Server{
-		cfg:              cfg,
-		db:               db,
-		usersRepo:        repo.NewUsersRepo(db),
-		statesRepo:       repo.NewStateRepo(db),
-		subsRepo:         repo.NewSubscriptionsRepo(db),
-		keysRepo:         repo.NewAccessKeysRepo(db),
-		countriesAddRepo: repo.NewCountriesToAddRepo(db),
-		clients:          clients,
+		cfg:                 cfg,
+		db:                  db,
+		usersRepo:           repo.NewUsersRepo(db),
+		statesRepo:          repo.NewStateRepo(db),
+		subsRepo:            repo.NewSubscriptionsRepo(db),
+		keysRepo:            repo.NewAccessKeysRepo(db),
+		countriesAddRepo:    repo.NewCountriesToAddRepo(db),
+		promocodesRepo:      repo.NewPromocodesRepo(db),
+		promocodeUsagesRepo: repo.NewPromocodeUsagesRepo(db),
+		clients:             clients,
 	}
 }
 
@@ -63,6 +67,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/v1/telegram/subscriptions", s.handleTelegramSubscriptions)
 		r.Get("/v1/telegram/country-status", s.handleTelegramCountryStatus)
 		r.Post("/v1/telegram/countries-to-add", s.handleTelegramCountriesToAdd)
+		r.Post("/v1/telegram/promocode-use", s.handleTelegramPromocodeUse)
+		r.Post("/v1/telegram/promocode-rollback", s.handleTelegramPromocodeRollback)
+		r.Post("/v1/telegram/update-promocode-subscription", s.handleTelegramUpdatePromocodeSubscription)
 
 		r.Post("/v1/issue-key", s.handleIssueKey)
 	})

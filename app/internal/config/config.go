@@ -27,6 +27,9 @@ type Config struct {
 	Servers       map[string]OutlineServer
 
 	PG Postgres
+
+	// PromocodesOnlyForNewUsers - если true, промокоды работают только для пользователей без активных подписок
+	PromocodesOnlyForNewUsers bool
 }
 
 func Load() (Config, error) {
@@ -54,6 +57,8 @@ func Load() (Config, error) {
 		Password: getenv("POSTGRES_PASSWORD", "vpn"),
 		SSLMode:  getenv("POSTGRES_SSLMODE", "disable"),
 	}
+
+	cfg.PromocodesOnlyForNewUsers = getenv("PROMOCODES_ONLY_FOR_NEW_USERS", "true") == "true"
 
 	return cfg, nil
 }

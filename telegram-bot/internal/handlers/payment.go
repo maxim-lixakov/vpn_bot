@@ -64,7 +64,7 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Ses
 		}
 
 		// выдаём ключ + инструкцию с картинками
-		return issueKeyNow(ctx, s, d)
+		return IssueKeyNow(ctx, s, d)
 
 	case d.Cfg.Payments.NewCountryPayload:
 		_, err := d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
@@ -98,7 +98,7 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Ses
 	return nil
 }
 
-func issueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
+func IssueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 	if s.SelectedCountry == nil {
 		msg := tgbotapi.NewMessage(s.ChatID, "Не выбрана страна. Нажми /start")
 		msg.ReplyMarkup = menu.Keyboard()

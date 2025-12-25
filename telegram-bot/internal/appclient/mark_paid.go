@@ -15,6 +15,7 @@ type TelegramMarkPaidReq struct {
 	Currency                string `json:"currency"`
 	TelegramPaymentChargeID string `json:"telegram_payment_charge_id"`
 	ProviderPaymentChargeID string `json:"provider_payment_charge_id"`
+	Months                  int    `json:"months"` // количество месяцев (0 = использовать дефолт)
 }
 
 type TelegramMarkPaidResp struct {

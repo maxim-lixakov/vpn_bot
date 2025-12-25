@@ -1,0 +1,101 @@
+package repo
+
+import (
+	"context"
+	"database/sql"
+	"strings"
+	"time"
+)
+
+type Promocode struct {
+	ID              int64
+	PromocodeName   string
+	PromotedBy      sql.NullInt64
+	TimesUsed       int
+	TimesToBeUsed   int
+	PromocodeMonths int
+	CreatedAt       time.Time
+	LastUsedAt      sql.NullTime
+}
+
+type PromocodesRepo struct{ db *sql.DB }
+
+type PromocodesRepoInterface interface {
+	GetByName(ctx context.Context, name string) (Promocode, bool, error)
+	GetByID(ctx context.Context, id int64) (Promocode, bool, error)
+	IncrementUsage(ctx context.Context, promocodeID int64) error
+	DecrementUsage(ctx context.Context, promocodeID int64) error
+}
+
+func NewPromocodesRepo(db *sql.DB) PromocodesRepoInterface {
+	return &PromocodesRepo{db: db}
+}
+
+func (r *PromocodesRepo) GetByName(ctx context.Context, name string) (Promocode, bool, error) {
+	name = strings.TrimSpace(name)
+
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, promocode_name, promoted_by, times_used, times_to_be_used, 
+		       promocode_months, created_at, last_used_at
+		FROM promocodes
+		WHERE LOWER(TRIM(promocode_name)) = LOWER(TRIM($1))
+	`, name)
+
+	var p Promocode
+	err := row.Scan(
+		&p.ID, &p.PromocodeName, &p.PromotedBy,
+		&p.TimesUsed, &p.TimesToBeUsed, &p.PromocodeMonths,
+		&p.CreatedAt, &p.LastUsedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return Promocode{}, false, nil
+	}
+	if err != nil {
+		return Promocode{}, false, err
+	}
+	return p, true, nil
+}
+
+func (r *PromocodesRepo) GetByID(ctx context.Context, id int64) (Promocode, bool, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, promocode_name, promoted_by, times_used, times_to_be_used, 
+		       promocode_months, created_at, last_used_at
+		FROM promocodes
+		WHERE id = $1
+	`, id)
+
+	var p Promocode
+	err := row.Scan(
+		&p.ID, &p.PromocodeName, &p.PromotedBy,
+		&p.TimesUsed, &p.TimesToBeUsed, &p.PromocodeMonths,
+		&p.CreatedAt, &p.LastUsedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return Promocode{}, false, nil
+	}
+	if err != nil {
+		return Promocode{}, false, err
+	}
+	return p, true, nil
+}
+
+func (r *PromocodesRepo) IncrementUsage(ctx context.Context, promocodeID int64) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE promocodes
+		SET times_used = times_used + 1,
+		    last_used_at = now()
+		WHERE id = $1
+	`, promocodeID)
+	return err
+}
+
+func (r *PromocodesRepo) DecrementUsage(ctx context.Context, promocodeID int64) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE promocodes
+		SET times_used = GREATEST(0, times_used - 1)
+		WHERE id = $1
+	`, promocodeID)
+	return err
+}

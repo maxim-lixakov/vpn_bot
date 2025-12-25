@@ -8,6 +8,7 @@ const (
 	BtnMySubs       = "Моя подписка ℹ️"
 	BtnChooseVPN    = "Выбрать страну впн 🇺🇳"
 	BtnOrderCountry = "Заказать новую страну ➡️"
+	BtnUsePromocode = "Использовать промокод 🎫️"
 )
 
 func Keyboard() tgbotapi.ReplyKeyboardMarkup {
@@ -15,6 +16,7 @@ func Keyboard() tgbotapi.ReplyKeyboardMarkup {
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnMySubs)),
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnChooseVPN)),
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnOrderCountry)),
+		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnUsePromocode)),
 	)
 	kb.ResizeKeyboard = true
 	kb.OneTimeKeyboard = false
