@@ -92,22 +92,53 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, okClient := s.clients[req.Country]
-	if !okClient {
-		http.Error(w, "outline client not configured", http.StatusBadGateway)
-		return
-	}
-
-	keyName := fmt.Sprintf("tg:%d:%s", req.TgUserID, req.Country)
-	key, err := client.CreateAccessKey(r.Context(), keyName)
+	existingKey, hasKey, err := s.keysRepo.GetActive(r.Context(), user.ID, req.Country)
 	if err != nil {
-		http.Error(w, "outline error: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-
-	if err := s.keysRepo.Insert(r.Context(), user.ID, req.Country, key.ID, key.AccessURL); err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
+	}
+
+	var keyID string
+	var accessURL string
+	var accessKeyDBID int64
+
+	if hasKey {
+		keyID = existingKey.OutlineKeyID
+		accessURL = existingKey.AccessURL
+		accessKeyDBID = existingKey.ID
+	} else {
+		client, okClient := s.clients[req.Country]
+		if !okClient {
+			http.Error(w, "outline client not configured", http.StatusBadGateway)
+			return
+		}
+
+		keyName := fmt.Sprintf("tg:%d:%s", req.TgUserID, req.Country)
+		key, err := client.CreateAccessKey(r.Context(), keyName)
+		if err != nil {
+			http.Error(w, "outline error: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+
+		insertedID, err := s.keysRepo.Insert(r.Context(), user.ID, req.Country, key.ID, key.AccessURL)
+		if err != nil {
+			http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+
+		keyID = key.ID
+		accessURL = key.AccessURL
+		accessKeyDBID = insertedID
+	}
+
+	if err := s.subsRepo.AttachAccessKeyToLatestPaid(
+		r.Context(),
+		user.ID,
+		"vpn",
+		sql.NullString{String: req.Country, Valid: true},
+		accessKeyDBID,
+	); err != nil {
+		_ = err
 	}
 
 	_, _ = s.statesRepo.Set(r.Context(), user.ID, domain.StateActive, sql.NullString{String: req.Country, Valid: true})
@@ -116,7 +147,7 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 		Status:      "ok",
 		Country:     req.Country,
 		ServerName:  server.Name,
-		AccessKeyID: key.ID,
-		AccessURL:   key.AccessURL,
+		AccessKeyID: keyID,
+		AccessURL:   accessURL,
 	})
 }

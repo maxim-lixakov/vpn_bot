@@ -64,10 +64,13 @@ func (s *Server) handleTelegramMarkPaid(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// После миграции access_key_id будет привязан через issue-key после выдачи ключа
+	// Не ищем ключ автоматически здесь - issue-key должен привязать его
 	until, err := s.subsRepo.MarkPaid(r.Context(), repo.MarkPaidArgs{
 		UserID:                  user.ID,
 		Kind:                    kind,
 		CountryCode:             cc,
+		AccessKeyID:             sql.NullInt64{}, // Будет привязан через issue-key
 		Provider:                "telegram",
 		AmountMinor:             req.AmountMinor,
 		Currency:                currency,
@@ -80,11 +83,9 @@ func (s *Server) handleTelegramMarkPaid(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// state меняем только для vpn (для country_request пусть остаётся как есть)
+	// state меняем только для vpn
 	if kind == "vpn" {
-		_, err := s.statesRepo.Get(r.Context(), user.ID)
-		if err == nil {
-			// проставим выбранную страну явно
+		if _, err := s.statesRepo.Get(r.Context(), user.ID); err == nil {
 			_, _ = s.statesRepo.Set(r.Context(), user.ID, domain.StateIssueKey, cc)
 		}
 	}
