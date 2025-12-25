@@ -22,6 +22,7 @@ type Server struct {
 	countriesAddRepo    repo.CountriesToAddRepoInterface
 	promocodesRepo      repo.PromocodesRepoInterface
 	promocodeUsagesRepo repo.PromocodeUsagesRepoInterface
+	feedbackRepo        repo.FeedbackRepoInterface
 
 	clients map[string]outline.OutlineClientInterface
 }
@@ -42,6 +43,7 @@ func New(cfg config.Config, db *sql.DB) *Server {
 		countriesAddRepo:    repo.NewCountriesToAddRepo(db),
 		promocodesRepo:      repo.NewPromocodesRepo(db),
 		promocodeUsagesRepo: repo.NewPromocodeUsagesRepo(db),
+		feedbackRepo:        repo.NewFeedbackRepo(db),
 		clients:             clients,
 	}
 }
@@ -70,6 +72,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/v1/telegram/promocode-use", s.handleTelegramPromocodeUse)
 		r.Post("/v1/telegram/promocode-rollback", s.handleTelegramPromocodeRollback)
 		r.Post("/v1/telegram/update-promocode-subscription", s.handleTelegramUpdatePromocodeSubscription)
+		r.Post("/v1/telegram/feedback", s.handleTelegramFeedback)
 
 		r.Post("/v1/issue-key", s.handleIssueKey)
 	})
