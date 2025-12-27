@@ -60,12 +60,8 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.auth)
 
 		r.Post("/v1/telegram/upsert", s.handleTelegramUpsert)
-
 		r.Post("/v1/telegram/set-state", s.handleTelegramSetState)
-
 		r.Post("/v1/telegram/mark-paid", s.handleTelegramMarkPaid)
-
-		// новые под меню
 		r.Get("/v1/telegram/subscriptions", s.handleTelegramSubscriptions)
 		r.Get("/v1/telegram/country-status", s.handleTelegramCountryStatus)
 		r.Post("/v1/telegram/countries-to-add", s.handleTelegramCountriesToAdd)
