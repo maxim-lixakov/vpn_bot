@@ -5,11 +5,12 @@ import (
 )
 
 const (
-	BtnMySubs       = "Моя подписка ℹ️"
-	BtnChooseVPN    = "Выбрать страну впн 🇺🇳"
-	BtnOrderCountry = "Заказать новую страну ➡️"
-	BtnUsePromocode = "Использовать промокод 🎫️"
-	BtnFeedback     = "Оставить отзыв 💬"
+	BtnMySubs       = "ℹ️ Моя подписка"
+	BtnChooseVPN    = "🇺🇳 Выбрать страну впн"
+	BtnOrderCountry = "➡️ Заказать новую страну "
+	BtnUsePromocode = "🎫️ Использовать промокод"
+	BtnReferralCode = "🎁 Получить код для реферальной программы"
+	BtnFeedback     = "💬 Оставить отзыв"
 )
 
 func Keyboard() tgbotapi.ReplyKeyboardMarkup {
@@ -18,6 +19,7 @@ func Keyboard() tgbotapi.ReplyKeyboardMarkup {
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnChooseVPN)),
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnOrderCountry)),
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnUsePromocode)),
+		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnReferralCode)),
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnFeedback)),
 	)
 	kb.ResizeKeyboard = true

@@ -58,6 +58,7 @@ func main() {
 		handlers.PromocodeText{},
 		handlers.SendFeedback{},
 		handlers.FeedbackText{},
+		handlers.GetReferralCode{},
 		handlers.PaymentFlow{},
 	)
 
@@ -83,16 +84,24 @@ func main() {
 
 		sess, ok := buildSession(ctx, upd, app)
 		if !ok {
+			log.Printf("buildSession failed for update")
 			cancel()
 			continue
 		}
 
+		if upd.Message != nil {
+			log.Printf("message from %d: text=%q state=%q", upd.Message.From.ID, upd.Message.Text, sess.State)
+		}
 		if upd.CallbackQuery != nil {
 			log.Printf("callback data=%q state=%q selected=%v", upd.CallbackQuery.Data, sess.State, sess.SelectedCountry)
 		}
 
-		if err := router.Dispatch(ctx, upd, sess, deps); err != nil {
+		err := router.Dispatch(ctx, upd, sess, deps)
+		if err != nil {
 			log.Printf("handle error: %v", err)
+		} else if upd.Message != nil {
+			// Логируем, если сообщение не было обработано (нет подходящего handler)
+			log.Printf("message processed (or ignored)")
 		}
 		cancel()
 	}

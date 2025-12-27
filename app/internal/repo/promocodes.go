@@ -2,20 +2,24 @@ package repo
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"fmt"
 	"strings"
 	"time"
 )
 
 type Promocode struct {
-	ID              int64
-	PromocodeName   string
-	PromotedBy      sql.NullInt64
-	TimesUsed       int
-	TimesToBeUsed   int
-	PromocodeMonths int
-	CreatedAt       time.Time
-	LastUsedAt      sql.NullTime
+	ID               int64
+	PromocodeName    string
+	PromotedBy       sql.NullInt64
+	TimesUsed        int
+	TimesToBeUsed    int
+	PromocodeMonths  int
+	AllowForOldUsers bool
+	CreatedAt        time.Time
+	LastUsedAt       sql.NullTime
 }
 
 type PromocodesRepo struct{ db *sql.DB }
@@ -25,6 +29,7 @@ type PromocodesRepoInterface interface {
 	GetByID(ctx context.Context, id int64) (Promocode, bool, error)
 	IncrementUsage(ctx context.Context, promocodeID int64) error
 	DecrementUsage(ctx context.Context, promocodeID int64) error
+	GetOrCreateReferralCode(ctx context.Context, userID int64) (Promocode, error)
 }
 
 func NewPromocodesRepo(db *sql.DB) PromocodesRepoInterface {
@@ -36,7 +41,7 @@ func (r *PromocodesRepo) GetByName(ctx context.Context, name string) (Promocode,
 
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, promocode_name, promoted_by, times_used, times_to_be_used, 
-		       promocode_months, created_at, last_used_at
+		       promocode_months, allow_for_old_users, created_at, last_used_at
 		FROM promocodes
 		WHERE LOWER(TRIM(promocode_name)) = LOWER(TRIM($1))
 	`, name)
@@ -45,7 +50,7 @@ func (r *PromocodesRepo) GetByName(ctx context.Context, name string) (Promocode,
 	err := row.Scan(
 		&p.ID, &p.PromocodeName, &p.PromotedBy,
 		&p.TimesUsed, &p.TimesToBeUsed, &p.PromocodeMonths,
-		&p.CreatedAt, &p.LastUsedAt,
+		&p.AllowForOldUsers, &p.CreatedAt, &p.LastUsedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -60,7 +65,7 @@ func (r *PromocodesRepo) GetByName(ctx context.Context, name string) (Promocode,
 func (r *PromocodesRepo) GetByID(ctx context.Context, id int64) (Promocode, bool, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, promocode_name, promoted_by, times_used, times_to_be_used, 
-		       promocode_months, created_at, last_used_at
+		       promocode_months, allow_for_old_users, created_at, last_used_at
 		FROM promocodes
 		WHERE id = $1
 	`, id)
@@ -69,7 +74,7 @@ func (r *PromocodesRepo) GetByID(ctx context.Context, id int64) (Promocode, bool
 	err := row.Scan(
 		&p.ID, &p.PromocodeName, &p.PromotedBy,
 		&p.TimesUsed, &p.TimesToBeUsed, &p.PromocodeMonths,
-		&p.CreatedAt, &p.LastUsedAt,
+		&p.AllowForOldUsers, &p.CreatedAt, &p.LastUsedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -98,4 +103,47 @@ func (r *PromocodesRepo) DecrementUsage(ctx context.Context, promocodeID int64) 
 		WHERE id = $1
 	`, promocodeID)
 	return err
+}
+
+// generateReferralCodeHash генерирует стабильный 10-символьный хеш на основе userID
+func generateReferralCodeHash(userID int64) string {
+	hash := sha256.Sum256([]byte(fmt.Sprintf("referral_%d", userID)))
+	return hex.EncodeToString(hash[:])[:10]
+}
+
+// GetOrCreateReferralCode получает или создаёт реферальный промокод для пользователя
+func (r *PromocodesRepo) GetOrCreateReferralCode(ctx context.Context, userID int64) (Promocode, error) {
+	hash := generateReferralCodeHash(userID)
+	codeName := fmt.Sprintf("referral_%d_%s", userID, hash)
+
+	// Пытаемся найти существующий промокод
+	promo, found, err := r.GetByName(ctx, codeName)
+	if err != nil {
+		return Promocode{}, err
+	}
+	if found {
+		return promo, nil
+	}
+
+	// Создаём новый промокод
+	row := r.db.QueryRowContext(ctx, `
+		INSERT INTO promocodes(
+			promocode_name, promoted_by, times_used, times_to_be_used, promocode_months, allow_for_old_users, created_at
+		)
+		VALUES ($1, $2, 0, 50, 1, false, now())
+		RETURNING id, promocode_name, promoted_by, times_used, times_to_be_used, 
+		       promocode_months, allow_for_old_users, created_at, last_used_at
+	`, codeName, userID)
+
+	var p Promocode
+	err = row.Scan(
+		&p.ID, &p.PromocodeName, &p.PromotedBy,
+		&p.TimesUsed, &p.TimesToBeUsed, &p.PromocodeMonths,
+		&p.AllowForOldUsers, &p.CreatedAt, &p.LastUsedAt,
+	)
+	if err != nil {
+		return Promocode{}, err
+	}
+
+	return p, nil
 }

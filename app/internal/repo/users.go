@@ -23,6 +23,7 @@ type UsersRepo struct{ db *sql.DB }
 type UsersRepoInterface interface {
 	UpsertByTelegram(ctx context.Context, u User) (User, error)
 	GetByTelegramID(ctx context.Context, tgUserID int64) (User, bool, error)
+	GetByID(ctx context.Context, userID int64) (User, bool, error)
 }
 
 func NewUsersRepo(db *sql.DB) UsersRepoInterface { return &UsersRepo{db: db} }
@@ -56,6 +57,23 @@ func (r *UsersRepo) GetByTelegramID(ctx context.Context, tgUserID int64) (User, 
 		SELECT id, tg_user_id, username, first_name, last_name, language_code, phone, created_at, last_activity_at
 		FROM users WHERE tg_user_id=$1
 	`, tgUserID)
+
+	var out User
+	err := row.Scan(&out.ID, &out.TgUserID, &out.Username, &out.FirstName, &out.LastName, &out.LanguageCode, &out.Phone, &out.CreatedAt, &out.LastActivityAt)
+	if err == sql.ErrNoRows {
+		return User{}, false, nil
+	}
+	if err != nil {
+		return User{}, false, err
+	}
+	return out, true, nil
+}
+
+func (r *UsersRepo) GetByID(ctx context.Context, userID int64) (User, bool, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, tg_user_id, username, first_name, last_name, language_code, phone, created_at, last_activity_at
+		FROM users WHERE id=$1
+	`, userID)
 
 	var out User
 	err := row.Scan(&out.ID, &out.TgUserID, &out.Username, &out.FirstName, &out.LastName, &out.LanguageCode, &out.Phone, &out.CreatedAt, &out.LastActivityAt)

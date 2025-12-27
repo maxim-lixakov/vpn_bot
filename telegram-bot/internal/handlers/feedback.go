@@ -8,6 +8,7 @@ import (
 
 	"vpn-bot/internal/menu"
 	"vpn-bot/internal/router"
+	"vpn-bot/internal/utils"
 )
 
 type SendFeedback struct{}
@@ -15,7 +16,10 @@ type SendFeedback struct{}
 func (h SendFeedback) Name() string { return "send_feedback" }
 
 func (h SendFeedback) CanHandle(u tgbotapi.Update, s router.Session) bool {
-	return u.Message != nil && strings.EqualFold(strings.TrimSpace(u.Message.Text), menu.BtnFeedback)
+	if u.Message == nil {
+		return false
+	}
+	return utils.NormalizeButtonText(strings.TrimSpace(u.Message.Text)) == utils.NormalizeButtonText(menu.BtnFeedback)
 }
 
 func (h SendFeedback) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
