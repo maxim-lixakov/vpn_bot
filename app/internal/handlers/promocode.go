@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -137,7 +138,8 @@ func (s *Server) handleTelegramPromocodeUse(w http.ResponseWriter, r *http.Reque
 				oldUntil, newUntil, err := s.subsRepo.ExtendActiveSubscriptionByMonth(ctx, referrerUserID, "vpn")
 				if err != nil {
 					// Логируем ошибку, но не прерываем процесс применения промокода
-					// TODO: добавить логирование
+					log.Printf("promocode: failed to extend referrer subscription: user_id=%d, referrer_user_id=%d, promocode_id=%d, error=%v",
+						user.ID, referrerUserID, promo.ID, err)
 				} else {
 					// Получаем информацию о пользователе, который использовал промокод, для уведомления
 					username := "пользователь"

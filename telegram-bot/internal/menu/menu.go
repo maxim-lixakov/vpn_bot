@@ -19,8 +19,8 @@ func Keyboard() tgbotapi.ReplyKeyboardMarkup {
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnChooseVPN)),
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnOrderCountry)),
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnUsePromocode)),
-		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnFeedback)),
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnReferralCode)),
+		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnFeedback)),
 	)
 	kb.ResizeKeyboard = true
 	kb.OneTimeKeyboard = false
