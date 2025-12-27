@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -29,12 +30,14 @@ type SubscriptionsRepo struct{ db *sql.DB }
 type SubscriptionsRepoInterface interface {
 	GetActiveUntilFor(ctx context.Context, userID int64, kind string, country sql.NullString, now time.Time) (time.Time, bool, error)
 	HasAnyActiveSubscription(ctx context.Context, userID int64, kind string, now time.Time) (bool, error)
+	HasEverHadSubscription(ctx context.Context, userID int64, kind string) (bool, error)
 	ListByUser(ctx context.Context, userID int64) ([]Subscription, error)
 	MarkPaid(ctx context.Context, args MarkPaidArgs) (activeUntil time.Time, err error)
 	AttachAccessKeyToLatestPaid(ctx context.Context, userID int64, kind string, country sql.NullString, accessKeyID int64) error
 	GetLatestPaidByKind(ctx context.Context, userID int64, kind string) (int64, bool, error)
 	UpdateCountryCodeForPromocode(ctx context.Context, userID int64, country string) error
 	DeletePromocodeSubscription(ctx context.Context, userID int64) error
+	ExtendActiveSubscriptionByMonth(ctx context.Context, userID int64, kind string) (oldUntil, newUntil time.Time, err error)
 }
 
 func NewSubscriptionsRepo(db *sql.DB) SubscriptionsRepoInterface { return &SubscriptionsRepo{db: db} }
@@ -79,8 +82,23 @@ func (r *SubscriptionsRepo) HasAnyActiveSubscription(ctx context.Context, userID
 		SELECT COUNT(*)
 		FROM subscriptions
 		WHERE user_id=$1 AND status='paid' AND kind=$2 AND active_until > $3
-		LIMIT 1
 	`, userID, kind, now).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// HasEverHadSubscription проверяет, была ли у пользователя когда-либо подписка указанного вида (независимо от статуса и даты)
+func (r *SubscriptionsRepo) HasEverHadSubscription(ctx context.Context, userID int64, kind string) (bool, error) {
+	kind = strings.TrimSpace(strings.ToLower(kind))
+
+	var count int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM subscriptions
+		WHERE user_id=$1 AND status='paid' AND kind=$2
+	`, userID, kind).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -275,6 +293,45 @@ func (r *SubscriptionsRepo) DeletePromocodeSubscription(ctx context.Context, use
 		)
 	`, userID)
 	return err
+}
+
+// ExtendActiveSubscriptionByMonth продлевает самую активную подписку пользователя на +1 месяц
+// Возвращает старое и новое значение active_until
+func (r *SubscriptionsRepo) ExtendActiveSubscriptionByMonth(ctx context.Context, userID int64, kind string) (oldUntil, newUntil time.Time, err error) {
+	kind = strings.TrimSpace(strings.ToLower(kind))
+	now := time.Now().UTC()
+
+	// Сначала получаем старое значение active_until
+	var subID int64
+	err = r.db.QueryRowContext(ctx, `
+		SELECT id, active_until
+		FROM subscriptions
+		WHERE user_id=$1 
+		  AND status='paid' 
+		  AND kind=$2
+		  AND active_until > $3
+		ORDER BY active_until DESC
+		LIMIT 1
+	`, userID, kind, now).Scan(&subID, &oldUntil)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return time.Time{}, time.Time{}, fmt.Errorf("no active subscription found")
+		}
+		return time.Time{}, time.Time{}, err
+	}
+
+	// Обновляем подписку
+	_, err = r.db.ExecContext(ctx, `
+		UPDATE subscriptions
+		SET active_until = active_until + INTERVAL '1 month'
+		WHERE id = $1
+	`, subID)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+
+	newUntil = oldUntil.AddDate(0, 1, 0)
+	return oldUntil, newUntil, nil
 }
 
 func nullStringToAny(ns sql.NullString) any {

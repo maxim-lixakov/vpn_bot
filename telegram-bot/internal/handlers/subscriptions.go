@@ -18,7 +18,11 @@ type MySubscriptions struct{}
 func (h MySubscriptions) Name() string { return "my_subs" }
 
 func (h MySubscriptions) CanHandle(u tgbotapi.Update, s router.Session) bool {
-	return u.Message != nil && strings.EqualFold(strings.TrimSpace(u.Message.Text), menu.BtnMySubs)
+	if u.Message == nil {
+		return false
+	}
+	text := strings.TrimSpace(u.Message.Text)
+	return utils.NormalizeButtonText(text) == utils.NormalizeButtonText(menu.BtnMySubs)
 }
 
 func (h MySubscriptions) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {

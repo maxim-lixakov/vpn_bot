@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -59,6 +61,15 @@ func (s *Server) handleTelegramPromocodeUse(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Проверяем, не является ли промокод созданным самим пользователем
+	if promo.PromotedBy.Valid && promo.PromotedBy.Int64 == user.ID {
+		utils.WriteJSON(w, tgPromocodeUseResp{
+			Valid:   false,
+			Message: "Вы не можете использовать промокод, созданный вами",
+		})
+		return
+	}
+
 	// Проверяем, не использовал ли уже этот пользователь этот промокод
 	alreadyUsed, err := s.promocodeUsagesRepo.HasUserUsed(r.Context(), promo.ID, user.ID)
 	if err != nil {
@@ -82,20 +93,20 @@ func (s *Server) handleTelegramPromocodeUse(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Проверяем, есть ли у пользователя активная подписка (если флаг включен)
-	if s.cfg.PromocodesOnlyForNewUsers {
-		hasActive, err := s.subsRepo.HasAnyActiveSubscription(r.Context(), user.ID, "vpn", time.Now().UTC())
-		if err != nil {
-			http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
-			return
-		}
-		if hasActive {
-			utils.WriteJSON(w, tgPromocodeUseResp{
-				Valid:   false,
-				Message: "Этот промокод работает только для новых пользователей без активных подписок.",
-			})
-			return
-		}
+	// Проверяем, был ли у пользователя когда-либо подписка (старый пользователь)
+	hasEverHadSubscription, err := s.subsRepo.HasEverHadSubscription(r.Context(), user.ID, "vpn")
+	if err != nil {
+		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	// Если пользователь старый (имел подписку когда-либо) и промокод не разрешает для старых пользователей
+	if hasEverHadSubscription && !promo.AllowForOldUsers {
+		utils.WriteJSON(w, tgPromocodeUseResp{
+			Valid:   false,
+			Message: "Этот промокод работает только для новых пользователей.",
+		})
+		return
 	}
 
 	// Валидация прошла - увеличиваем счётчик использований
@@ -111,6 +122,47 @@ func (s *Server) handleTelegramPromocodeUse(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "db error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
+
+	// Проверяем, является ли промокод реферальным
+	// Выполняем это асинхронно, чтобы не блокировать ответ
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if strings.HasPrefix(strings.ToLower(promo.PromocodeName), "referral_") && promo.PromotedBy.Valid {
+			referrerUserID := promo.PromotedBy.Int64
+			// Не даём бонус, если пользователь использует свой собственный промокод
+			if referrerUserID != user.ID {
+				// Продлеваем активную подписку реферера на +1 месяц
+				oldUntil, newUntil, err := s.subsRepo.ExtendActiveSubscriptionByMonth(ctx, referrerUserID, "vpn")
+				if err != nil {
+					// Логируем ошибку, но не прерываем процесс применения промокода
+					// TODO: добавить логирование
+				} else {
+					// Получаем информацию о пользователе, который использовал промокод, для уведомления
+					username := "пользователь"
+					if user.Username.Valid && user.Username.String != "" {
+						username = "@" + user.Username.String
+					} else if user.FirstName.Valid && user.FirstName.String != "" {
+						username = user.FirstName.String
+					}
+
+					// Получаем tg_user_id реферера для отправки уведомления
+					referrerUser, ok, err := s.usersRepo.GetByID(ctx, referrerUserID)
+					if err == nil && ok && s.cfg.BotToken != "" {
+						// Отправляем уведомление рефереру с информацией о продлении
+						message := fmt.Sprintf(
+							"Пользователь %s использовал ваш реферальный промокод.\n\nВам добавлен +1 месяц к активной подписке!\n\nБыло активно до: %s\nСтало активно до: %s",
+							username,
+							oldUntil.Format("2006-01-02 15:04"),
+							newUntil.Format("2006-01-02 15:04"),
+						)
+						_ = utils.SendTelegramMessage(s.cfg.BotToken, referrerUser.TgUserID, message)
+					}
+				}
+			}
+		}
+	}()
 
 	utils.WriteJSON(w, tgPromocodeUseResp{
 		Valid:   true,

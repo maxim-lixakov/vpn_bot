@@ -30,6 +30,9 @@ type Config struct {
 
 	// PromocodesOnlyForNewUsers - если true, промокоды работают только для пользователей без активных подписок
 	PromocodesOnlyForNewUsers bool
+
+	// BotToken - токен Telegram бота для отправки уведомлений
+	BotToken string
 }
 
 func Load() (Config, error) {
@@ -59,6 +62,7 @@ func Load() (Config, error) {
 	}
 
 	cfg.PromocodesOnlyForNewUsers = getenv("PROMOCODES_ONLY_FOR_NEW_USERS", "true") == "true"
+	cfg.BotToken = os.Getenv("BOT_TOKEN") // Опционально, для отправки уведомлений
 
 	return cfg, nil
 }

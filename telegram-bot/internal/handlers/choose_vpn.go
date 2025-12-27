@@ -10,6 +10,7 @@ import (
 	"vpn-bot/internal/countries"
 	"vpn-bot/internal/menu"
 	"vpn-bot/internal/router"
+	"vpn-bot/internal/utils"
 )
 
 type ChooseVPN struct{}
@@ -17,7 +18,10 @@ type ChooseVPN struct{}
 func (h ChooseVPN) Name() string { return "choose_vpn" }
 
 func (h ChooseVPN) CanHandle(u tgbotapi.Update, s router.Session) bool {
-	return u.Message != nil && strings.EqualFold(strings.TrimSpace(u.Message.Text), menu.BtnChooseVPN)
+	if u.Message == nil {
+		return false
+	}
+	return utils.NormalizeButtonText(strings.TrimSpace(u.Message.Text)) == utils.NormalizeButtonText(menu.BtnChooseVPN)
 }
 
 func (h ChooseVPN) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
