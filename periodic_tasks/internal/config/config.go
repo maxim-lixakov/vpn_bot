@@ -119,7 +119,7 @@ func GetTaskSchedules() []TaskSchedule {
 		},
 		{
 			TaskName: "backup",
-			Schedule: "0 */5 * * * *", // Every 5th minute at second 0 (for testing - change to "0 0 0 * * *" for daily at 00:00)
+			Schedule: "0 0 0 * * *", // Daily at 00:00
 		},
 		// Add more tasks here as they are created
 	}
