@@ -21,7 +21,6 @@ func Keyboard() tgbotapi.ReplyKeyboardMarkup {
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnUsePromocode)),
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnReferralCode)),
 		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnFeedback)),
-		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(BtnReferralCode)),
 	)
 	kb.ResizeKeyboard = true
 	kb.OneTimeKeyboard = false
