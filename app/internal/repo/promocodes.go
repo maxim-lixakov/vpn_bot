@@ -26,7 +26,6 @@ type PromocodesRepo struct{ db *sql.DB }
 
 type PromocodesRepoInterface interface {
 	GetByName(ctx context.Context, name string) (Promocode, bool, error)
-	GetByID(ctx context.Context, id int64) (Promocode, bool, error)
 	IncrementUsage(ctx context.Context, promocodeID int64) error
 	DecrementUsage(ctx context.Context, promocodeID int64) error
 	GetOrCreateReferralCode(ctx context.Context, userID int64) (Promocode, error)
@@ -45,30 +44,6 @@ func (r *PromocodesRepo) GetByName(ctx context.Context, name string) (Promocode,
 		FROM promocodes
 		WHERE LOWER(TRIM(promocode_name)) = LOWER(TRIM($1))
 	`, name)
-
-	var p Promocode
-	err := row.Scan(
-		&p.ID, &p.PromocodeName, &p.PromotedBy,
-		&p.TimesUsed, &p.TimesToBeUsed, &p.PromocodeMonths,
-		&p.AllowForOldUsers, &p.CreatedAt, &p.LastUsedAt,
-	)
-
-	if err == sql.ErrNoRows {
-		return Promocode{}, false, nil
-	}
-	if err != nil {
-		return Promocode{}, false, err
-	}
-	return p, true, nil
-}
-
-func (r *PromocodesRepo) GetByID(ctx context.Context, id int64) (Promocode, bool, error) {
-	row := r.db.QueryRowContext(ctx, `
-		SELECT id, promocode_name, promoted_by, times_used, times_to_be_used, 
-		       promocode_months, allow_for_old_users, created_at, last_used_at
-		FROM promocodes
-		WHERE id = $1
-	`, id)
 
 	var p Promocode
 	err := row.Scan(
