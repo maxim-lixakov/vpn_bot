@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type OutlineServer struct {
@@ -30,6 +31,9 @@ type Config struct {
 
 	// BotToken - токен Telegram бота для отправки уведомлений
 	BotToken string
+
+	// BackupAdminTgUserID - Telegram user ID для отправки бэкапов
+	BackupAdminTgUserID int64
 }
 
 func Load() (Config, error) {
@@ -59,6 +63,13 @@ func Load() (Config, error) {
 	}
 
 	cfg.BotToken = getenv("BOT_TOKEN", "token")
+
+	// Backup admin Telegram user ID
+	if tgUserIDStr := os.Getenv("BACKUP_ADMIN_TG_USER_ID"); tgUserIDStr != "" {
+		if tgUserID, err := strconv.ParseInt(tgUserIDStr, 10, 64); err == nil {
+			cfg.BackupAdminTgUserID = tgUserID
+		}
+	}
 
 	return cfg, nil
 }

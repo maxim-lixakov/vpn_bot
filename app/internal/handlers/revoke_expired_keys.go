@@ -107,6 +107,38 @@ func (s *Server) handleRevokeExpiredKeys(w http.ResponseWriter, r *http.Request)
 			sub.AccessKeyID, sub.OutlineKeyID, sub.SubscriptionID, sub.UserID, countryCode)
 	}
 
+	// Send notification to admin if there are revoked subscriptions
+	if revokedCount > 0 && s.cfg.BackupAdminTgUserID > 0 && s.cfg.BotToken != "" {
+		var message strings.Builder
+		message.WriteString(fmt.Sprintf("🔒 Отозвано %d истекших VPN ключей:\n\n", revokedCount))
+
+		for i, rev := range revoked {
+			if rev.TgUserID > 0 {
+				message.WriteString(fmt.Sprintf("%d. Подписка #%d\n   Пользователь: %d\n   Страна: %s\n\n",
+					i+1, rev.SubscriptionID, rev.TgUserID, rev.CountryCode))
+			} else {
+				message.WriteString(fmt.Sprintf("%d. Подписка #%d\n   Пользователь: не найден\n   Страна: %s\n\n",
+					i+1, rev.SubscriptionID, rev.CountryCode))
+			}
+		}
+
+		if len(errors) > 0 {
+			message.WriteString(fmt.Sprintf("\n⚠️ Ошибки (%d):\n", len(errors)))
+			for _, errMsg := range errors {
+				message.WriteString(fmt.Sprintf("  • %s\n", errMsg))
+			}
+		}
+
+		// Send message to admin asynchronously
+		go func() {
+			if err := telegram.SendMessage(s.cfg.BotToken, s.cfg.BackupAdminTgUserID, message.String()); err != nil {
+				log.Printf("failed to send telegram notification to admin: %v", err)
+			} else {
+				log.Printf("sent revocation report to admin (tg_user_id: %d)", s.cfg.BackupAdminTgUserID)
+			}
+		}()
+	}
+
 	utils.WriteJSON(w, revokeExpiredKeysResp{
 		RevokedCount: revokedCount,
 		Revoked:      revoked,

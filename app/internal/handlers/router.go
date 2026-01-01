@@ -73,6 +73,7 @@ func (s *Server) Router() http.Handler {
 
 		r.Post("/v1/issue-key", s.handleIssueKey)
 		r.Post("/v1/revoke-expired-keys", s.handleRevokeExpiredKeys)
+		r.Post("/v1/backup", s.handleBackup)
 	})
 
 	return r
