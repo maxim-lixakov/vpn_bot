@@ -27,6 +27,15 @@ type Subscription struct {
 
 type SubscriptionsRepo struct{ db *sql.DB }
 
+type ExpiredSubscriptionWithKey struct {
+	SubscriptionID int64
+	UserID         int64
+	CountryCode    sql.NullString
+	AccessKeyID    int64
+	OutlineKeyID   string
+	ActiveUntil    time.Time
+}
+
 type SubscriptionsRepoInterface interface {
 	GetActiveUntilFor(ctx context.Context, userID int64, kind string, country sql.NullString, now time.Time) (time.Time, bool, error)
 	HasAnyActiveSubscription(ctx context.Context, userID int64, kind string, now time.Time) (bool, error)
@@ -38,6 +47,7 @@ type SubscriptionsRepoInterface interface {
 	UpdateCountryCodeForPromocode(ctx context.Context, userID int64, country string) error
 	DeletePromocodeSubscription(ctx context.Context, userID int64) error
 	ExtendActiveSubscriptionByMonth(ctx context.Context, userID int64, kind string) (oldUntil, newUntil time.Time, err error)
+	GetExpiredSubscriptionsWithActiveKeys(ctx context.Context, now time.Time) ([]ExpiredSubscriptionWithKey, error)
 }
 
 func NewSubscriptionsRepo(db *sql.DB) SubscriptionsRepoInterface { return &SubscriptionsRepo{db: db} }
@@ -332,6 +342,51 @@ func (r *SubscriptionsRepo) ExtendActiveSubscriptionByMonth(ctx context.Context,
 
 	newUntil = oldUntil.AddDate(0, 1, 0)
 	return oldUntil, newUntil, nil
+}
+
+// GetExpiredSubscriptionsWithActiveKeys возвращает список истекших подписок с активными (не отозванными) ключами
+func (r *SubscriptionsRepo) GetExpiredSubscriptionsWithActiveKeys(ctx context.Context, now time.Time) ([]ExpiredSubscriptionWithKey, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT 
+			s.id,
+			s.user_id,
+			s.country_code,
+			s.access_key_id,
+			ak.outline_key_id,
+			s.active_until
+		FROM subscriptions s
+		INNER JOIN access_keys ak ON s.access_key_id = ak.id
+		WHERE s.status = 'paid'
+		  AND s.kind = 'vpn'
+		  AND s.active_until < $1
+		  AND s.access_key_id IS NOT NULL
+		  AND ak.revoked_at IS NULL
+		ORDER BY s.active_until ASC
+	`, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ExpiredSubscriptionWithKey
+	for rows.Next() {
+		var item ExpiredSubscriptionWithKey
+		var countryCode sql.NullString
+		err := rows.Scan(
+			&item.SubscriptionID,
+			&item.UserID,
+			&countryCode,
+			&item.AccessKeyID,
+			&item.OutlineKeyID,
+			&item.ActiveUntil,
+		)
+		if err != nil {
+			return nil, err
+		}
+		item.CountryCode = countryCode
+		result = append(result, item)
+	}
+	return result, rows.Err()
 }
 
 func nullStringToAny(ns sql.NullString) any {

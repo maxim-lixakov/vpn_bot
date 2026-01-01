@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"vpn-app/internal/telegram"
 	"vpn-app/internal/utils"
 )
 
@@ -159,7 +160,7 @@ func (s *Server) handleTelegramPromocodeUse(w http.ResponseWriter, r *http.Reque
 							oldUntil.Format("2006-01-02 15:04"),
 							newUntil.Format("2006-01-02 15:04"),
 						)
-						_ = utils.SendTelegramMessage(s.cfg.BotToken, referrerUser.TgUserID, message)
+						_ = telegram.SendMessage(s.cfg.BotToken, referrerUser.TgUserID, message)
 					}
 				}
 			}
