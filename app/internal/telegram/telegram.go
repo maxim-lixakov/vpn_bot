@@ -1,4 +1,4 @@
-package utils
+package telegram
 
 import (
 	"bytes"
@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// SendTelegramMessage отправляет сообщение пользователю через Telegram Bot API
-func SendTelegramMessage(botToken string, chatID int64, text string) error {
+// SendMessage отправляет сообщение пользователю через Telegram Bot API
+func SendMessage(botToken string, chatID int64, text string) error {
 	if botToken == "" {
 		return fmt.Errorf("bot token is empty")
 	}

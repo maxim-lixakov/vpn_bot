@@ -12,6 +12,7 @@ import (
 	"vpn-periodic-tasks/internal/scheduler"
 	"vpn-periodic-tasks/tasks/backup"
 	"vpn-periodic-tasks/tasks/example"
+	"vpn-periodic-tasks/tasks/revoke_expired_keys"
 )
 
 func main() {
@@ -39,6 +40,7 @@ func main() {
 
 	sched.RegisterTask(example.New())
 	sched.RegisterTask(backup.New())
+	sched.RegisterTask(revoke_expired_keys.New())
 
 	schedules := config.GetTaskSchedules()
 

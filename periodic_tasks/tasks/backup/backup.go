@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"vpn-periodic-tasks/internal/config"
-	"vpn-periodic-tasks/internal/utils"
+	"vpn-periodic-tasks/internal/telegram"
 )
 
 // Task implements the scheduler.Task interface for database backups
@@ -92,7 +92,7 @@ func (t *Task) Run(ctx context.Context, cfg config.Config) error {
 
 	// Send backup via Telegram
 	log.Printf("sending backup to Telegram user ID: %d", cfg.BackupAdminTgUserID)
-	if err := utils.SendTelegramDocument(
+	if err := telegram.SendTelegramDocument(
 		cfg.BotToken,
 		cfg.BackupAdminTgUserID,
 		backupFilename,
