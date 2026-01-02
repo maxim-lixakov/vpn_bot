@@ -84,7 +84,16 @@ func (h MySubscriptions) Handle(ctx context.Context, u tgbotapi.Update, s router
 			until = it.ActiveUntil.Format("2006-01-02 15:04")
 		}
 
-		line := fmt.Sprintf("Сервер: %s — активна до *%s*", utils.Mdv2Escape(serverName), utils.Mdv2Escape(until))
+		// Форматируем трафик
+		trafficStr := "—"
+		if it.TrafficBytes != nil {
+			trafficStr = utils.FormatBytes(*it.TrafficBytes)
+		}
+
+		line := fmt.Sprintf("Сервер: %s — активна до *%s*\nТрафик: *%s*",
+			utils.Mdv2Escape(serverName),
+			utils.Mdv2Escape(until),
+			utils.Mdv2Escape(trafficStr))
 		lines = append(lines, line)
 	}
 

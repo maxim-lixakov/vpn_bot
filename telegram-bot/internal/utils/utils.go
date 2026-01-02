@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -75,6 +76,24 @@ func Mdv2Escape(s string) string {
 		`!`, `\!`,
 	)
 	return replacer.Replace(s)
+}
+
+// formatBytes форматирует байты в читаемый формат (KB, MB, GB, TB)
+func FormatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	units := []string{"KB", "MB", "GB", "TB"}
+	if exp >= len(units) {
+		return fmt.Sprintf("%.2f TB", float64(bytes)/float64(div))
+	}
+	return fmt.Sprintf("%.2f %s", float64(bytes)/float64(div), units[exp])
 }
 
 // NormalizeButtonText убирает эмодзи и нормализует текст для сравнения

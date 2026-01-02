@@ -22,6 +22,7 @@ type AccessKeysRepoInterface interface {
 	GetActive(ctx context.Context, userID int64, country string) (AccessKey, bool, error)
 	Insert(ctx context.Context, userID int64, country, outlineKeyID, accessURL string) (int64, error)
 	Revoke(ctx context.Context, id int64, at time.Time) error
+	GetAllActiveByUser(ctx context.Context, userID int64) ([]AccessKey, error)
 }
 
 func NewAccessKeysRepo(db *sql.DB) AccessKeysRepoInterface { return &AccessKeysRepo{db: db} }
@@ -65,4 +66,29 @@ func (r *AccessKeysRepo) Revoke(ctx context.Context, id int64, at time.Time) err
 		WHERE id = $1 AND revoked_at IS NULL
 	`, id, at)
 	return err
+}
+
+// GetAllActiveByUser возвращает все активные ключи пользователя
+func (r *AccessKeysRepo) GetAllActiveByUser(ctx context.Context, userID int64) ([]AccessKey, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, user_id, country_code, outline_key_id, access_url, created_at, revoked_at
+		FROM access_keys
+		WHERE user_id = $1 AND revoked_at IS NULL
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []AccessKey
+	for rows.Next() {
+		var k AccessKey
+		err := rows.Scan(&k.ID, &k.UserID, &k.Country, &k.OutlineKeyID, &k.AccessURL, &k.CreatedAt, &k.RevokedAt)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
 }
