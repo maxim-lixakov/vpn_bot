@@ -75,10 +75,16 @@ func (s *Server) handleRevokeExpiredKeys(w http.ResponseWriter, r *http.Request)
 		// Получаем информацию о пользователе для отправки уведомления
 		user, ok, err := s.usersRepo.GetByID(r.Context(), sub.UserID)
 		if err == nil && ok && s.cfg.BotToken != "" {
+			serverName := ""
+			if server, ok := s.cfg.Servers[countryCode]; ok {
+				serverName = server.Name
+			}
+			countryName := utils.GetCountryName(countryCode, serverName)
+
 			// Отправляем уведомление пользователю о том, что его ключ истек
 			message := fmt.Sprintf(
 				"🔒 Ваш VPN ключ для страны %s был отозван, так как срок действия подписки истек.\n\nДля продолжения использования VPN необходимо продлить подписку.",
-				strings.ToUpper(countryCode),
+				countryName,
 			)
 			// Отправляем асинхронно, чтобы не блокировать процесс
 			go func() {

@@ -6,6 +6,7 @@ import (
 	"html"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
@@ -36,6 +37,37 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Ses
 	// 2) successful payment
 	sp := u.Message.SuccessfulPayment
 	payload := sp.InvoicePayload
+
+	// Проверяем, является ли это продлением подписки
+	isRenewal := strings.HasPrefix(payload, d.Cfg.Payments.VPNRenewalPayload+":")
+
+	if isRenewal {
+		// Продление подписки - извлекаем country_code из payload (формат: "vpn_renewal_v1:subscription_id:country_code")
+		parts := strings.Split(payload, ":")
+		var countryCode *string
+		if len(parts) >= 3 && parts[2] != "" {
+			countryCode = &parts[2]
+		}
+
+		_, err := d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
+			TgUserID:    s.TgUserID,
+			Kind:        "vpn",
+			CountryCode: countryCode,
+			AmountMinor: int64(sp.TotalAmount),
+			Currency:    sp.Currency,
+
+			TelegramPaymentChargeID: sp.TelegramPaymentChargeID,
+			ProviderPaymentChargeID: payload, // Используем payload для идентификации продления
+		})
+		if err != nil {
+			msg := tgbotapi.NewMessage(s.ChatID, "Оплата получена, но не смог продлить подписку: "+err.Error())
+			msg.ReplyMarkup = menu.Keyboard()
+			_, _ = d.Bot.Send(msg)
+			return nil
+		}
+
+		return nil
+	}
 
 	switch payload {
 	case d.Cfg.Payments.VPNPayload:

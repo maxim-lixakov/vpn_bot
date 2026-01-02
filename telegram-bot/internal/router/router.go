@@ -23,10 +23,11 @@ type PaymentsConfig struct {
 	Currency      string
 
 	// VPN subscription (100 RUB)
-	VPNPriceMinor  int64
-	VPNTtitle      string
-	VPNDescription string
-	VPNPayload     string
+	VPNPriceMinor     int64
+	VPNTtitle         string
+	VPNDescription    string
+	VPNPayload        string
+	VPNRenewalPayload string
 
 	// New country request (400 RUB)
 	NewCountryPriceMinor  int64
