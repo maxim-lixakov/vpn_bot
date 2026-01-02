@@ -9,11 +9,12 @@ import (
 )
 
 type SubscriptionDTO struct {
-	Kind        string     `json:"kind"`
-	CountryCode *string    `json:"country_code"`
-	PaidAt      time.Time  `json:"paid_at"`
-	ActiveUntil *time.Time `json:"active_until"`
-	IsActive    bool       `json:"is_active"`
+	Kind         string     `json:"kind"`
+	CountryCode  *string    `json:"country_code"`
+	PaidAt       time.Time  `json:"paid_at"`
+	ActiveUntil  *time.Time `json:"active_until"`
+	IsActive     bool       `json:"is_active"`
+	TrafficBytes *int64     `json:"traffic_bytes,omitempty"` // Потребленный трафик в байтах
 }
 
 type TelegramSubscriptionsResp struct {
