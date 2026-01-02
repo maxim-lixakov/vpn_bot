@@ -29,11 +29,17 @@ type Config struct {
 
 	PG Postgres
 
-	// BotToken - токен Telegram бота для отправки уведомлений
 	BotToken string
 
-	// BackupAdminTgUserID - Telegram user ID для отправки бэкапов
 	BackupAdminTgUserID int64
+
+	PaymentsProviderToken     string
+	PaymentsCurrency          string
+	PaymentsVPNPriceMinor     int64
+	PaymentsVPNTitle          string
+	PaymentsVPNDescription    string
+	PaymentsVPNPayload        string
+	PaymentsVPNRenewalPayload string
 }
 
 func Load() (Config, error) {
@@ -70,6 +76,15 @@ func Load() (Config, error) {
 			cfg.BackupAdminTgUserID = tgUserID
 		}
 	}
+
+	// Payments config
+	cfg.PaymentsProviderToken = getenv("PAYMENTS_PROVIDER_TOKEN", "")
+	cfg.PaymentsCurrency = getenv("PAYMENTS_CURRENCY", "RUB")
+	cfg.PaymentsVPNPriceMinor, _ = strconv.ParseInt(getenv("PAYMENTS_VPN_PRICE_MINOR", "15000"), 10, 64)
+	cfg.PaymentsVPNTitle = getenv("PAYMENTS_VPN_TITLE", "VPN подписка на 1 месяц")
+	cfg.PaymentsVPNDescription = getenv("PAYMENTS_VPN_DESCRIPTION", "VPN подписка на 1 месяц")
+	cfg.PaymentsVPNPayload = getenv("PAYMENTS_VPN_PAYLOAD", "vpn_sub_v1")
+	cfg.PaymentsVPNRenewalPayload = getenv("PAYMENTS_VPN_RENEWAL_PAYLOAD", "vpn_renewal_v1")
 
 	return cfg, nil
 }

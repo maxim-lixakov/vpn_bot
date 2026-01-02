@@ -81,29 +81,8 @@ func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.S
 		return IssueKeyNow(ctx, ss, d)
 	}
 
-	// 2) no active subscription -> payment 100
+	// 2) no active subscription -> payment 150
 	_ = d.App.TelegramSetState(ctx, s.TgUserID, "AWAIT_VPN_PAYMENT", &country)
-
-	if d.Cfg.Payments.ProviderToken == "" {
-		_, _ = d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
-			TgUserID:    s.TgUserID,
-			Kind:        "vpn",
-			CountryCode: &country,
-			AmountMinor: d.Cfg.Payments.VPNPriceMinor,
-			Currency:    d.Cfg.Payments.Currency,
-
-			TelegramPaymentChargeID: "dev-bypass",
-			ProviderPaymentChargeID: "dev-bypass",
-		})
-
-		msg := tgbotapi.NewMessage(s.ChatID, "Оплата пропущена (dev). Выдаю ключ…")
-		msg.ReplyMarkup = menu.Keyboard()
-		_, _ = d.Bot.Send(msg)
-
-		ss := s
-		ss.SelectedCountry = &country
-		return IssueKeyNow(ctx, ss, d)
-	}
 
 	err = payments.SendVPNInvoice(
 		d.Bot,

@@ -36,18 +36,29 @@ type ExpiredSubscriptionWithKey struct {
 	ActiveUntil    time.Time
 }
 
+type SubscriptionExpiringTomorrow struct {
+	SubscriptionID int64
+	UserID         int64
+	TgUserID       int64
+	CountryCode    sql.NullString
+	ActiveUntil    time.Time
+}
+
 type SubscriptionsRepoInterface interface {
 	GetActiveUntilFor(ctx context.Context, userID int64, kind string, country sql.NullString, now time.Time) (time.Time, bool, error)
 	HasAnyActiveSubscription(ctx context.Context, userID int64, kind string, now time.Time) (bool, error)
 	HasEverHadSubscription(ctx context.Context, userID int64, kind string) (bool, error)
 	ListByUser(ctx context.Context, userID int64) ([]Subscription, error)
-	MarkPaid(ctx context.Context, args MarkPaidArgs) (activeUntil time.Time, err error)
+	MarkPaid(ctx context.Context, args MarkPaidArgs) (subscriptionID int64, activeUntil time.Time, err error)
 	AttachAccessKeyToLatestPaid(ctx context.Context, userID int64, kind string, country sql.NullString, accessKeyID int64) error
 	GetLatestPaidByKind(ctx context.Context, userID int64, kind string) (int64, bool, error)
 	UpdateCountryCodeForPromocode(ctx context.Context, userID int64, country string) error
 	DeletePromocodeSubscription(ctx context.Context, userID int64) error
 	ExtendActiveSubscriptionByMonth(ctx context.Context, userID int64, kind string) (oldUntil, newUntil time.Time, err error)
 	GetExpiredSubscriptionsWithActiveKeys(ctx context.Context, now time.Time) ([]ExpiredSubscriptionWithKey, error)
+	GetSubscriptionsExpiringTomorrow(ctx context.Context, todayStart, tomorrowEnd time.Time) ([]SubscriptionExpiringTomorrow, error)
+	GetByID(ctx context.Context, subscriptionID int64) (Subscription, bool, error)
+	UpdateActiveUntil(ctx context.Context, subscriptionID int64, newActiveUntil time.Time) error
 }
 
 func NewSubscriptionsRepo(db *sql.DB) SubscriptionsRepoInterface { return &SubscriptionsRepo{db: db} }
@@ -160,7 +171,7 @@ type MarkPaidArgs struct {
 	Months                  int // количество месяцев (0 = использовать дефолт по kind)
 }
 
-func (r *SubscriptionsRepo) MarkPaid(ctx context.Context, args MarkPaidArgs) (time.Time, error) {
+func (r *SubscriptionsRepo) MarkPaid(ctx context.Context, args MarkPaidArgs) (int64, time.Time, error) {
 	now := args.PaidAt
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -173,7 +184,7 @@ func (r *SubscriptionsRepo) MarkPaid(ctx context.Context, args MarkPaidArgs) (ti
 
 	latestUntil, _, err := r.GetActiveUntilFor(ctx, args.UserID, args.Kind, args.CountryCode, now)
 	if err != nil {
-		return time.Time{}, err
+		return 0, time.Time{}, err
 	}
 
 	base := now
@@ -202,20 +213,22 @@ func (r *SubscriptionsRepo) MarkPaid(ctx context.Context, args MarkPaidArgs) (ti
 		ak = args.AccessKeyID.Int64
 	}
 
-	_, err = r.db.ExecContext(ctx, `
+	var subscriptionID int64
+	err = r.db.QueryRowContext(ctx, `
 		INSERT INTO subscriptions(
 			user_id, kind, country_code, access_key_id,
 			status, provider, amount_minor, currency, paid_at, active_until,
 			telegram_payment_charge_id, provider_payment_charge_id
 		)
 		VALUES ($1,$2,$3,$4,'paid',$5,$6,$7,$8,$9,$10,$11)
+		RETURNING id
 	`,
 		args.UserID, args.Kind, cc, ak,
 		args.Provider, args.AmountMinor, args.Currency, now, activeUntil,
 		nullStringToAny(args.TelegramPaymentChargeID), nullStringToAny(args.ProviderPaymentChargeID),
-	)
+	).Scan(&subscriptionID)
 
-	return activeUntil, err
+	return subscriptionID, activeUntil, err
 }
 
 func (r *SubscriptionsRepo) AttachAccessKeyToLatestPaid(ctx context.Context, userID int64, kind string, country sql.NullString, accessKeyID int64) error {
@@ -387,6 +400,87 @@ func (r *SubscriptionsRepo) GetExpiredSubscriptionsWithActiveKeys(ctx context.Co
 		result = append(result, item)
 	}
 	return result, rows.Err()
+}
+
+// GetSubscriptionsExpiringTomorrow возвращает список подписок, которые истекают завтра
+// todayStart - начало сегодняшнего дня (00:00:00)
+// tomorrowEnd - конец завтрашнего дня (23:59:59)
+func (r *SubscriptionsRepo) GetSubscriptionsExpiringTomorrow(ctx context.Context, todayStart, tomorrowEnd time.Time) ([]SubscriptionExpiringTomorrow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT 
+			s.id,
+			s.user_id,
+			u.tg_user_id,
+			s.country_code,
+			s.active_until
+		FROM subscriptions s
+		INNER JOIN users u ON s.user_id = u.id
+		WHERE s.status = 'paid'
+		  AND s.kind = 'vpn'
+		  AND s.active_until >= $1
+		  AND s.active_until <= $2
+		ORDER BY s.active_until ASC
+	`, todayStart, tomorrowEnd)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []SubscriptionExpiringTomorrow
+	for rows.Next() {
+		var item SubscriptionExpiringTomorrow
+		var countryCode sql.NullString
+		err := rows.Scan(
+			&item.SubscriptionID,
+			&item.UserID,
+			&item.TgUserID,
+			&countryCode,
+			&item.ActiveUntil,
+		)
+		if err != nil {
+			return nil, err
+		}
+		item.CountryCode = countryCode
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+// GetByID получает подписку по ID
+func (r *SubscriptionsRepo) GetByID(ctx context.Context, subscriptionID int64) (Subscription, bool, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, user_id, kind, country_code, access_key_id, status, provider,
+		       amount_minor, currency, paid_at, active_until,
+		       telegram_payment_charge_id, provider_payment_charge_id, created_at
+		FROM subscriptions
+		WHERE id = $1
+	`, subscriptionID)
+
+	var sub Subscription
+	err := row.Scan(
+		&sub.ID, &sub.UserID, &sub.Kind, &sub.CountryCode, &sub.AccessKeyID,
+		&sub.Status, &sub.Provider, &sub.AmountMinor, &sub.Currency,
+		&sub.PaidAt, &sub.ActiveUntil,
+		&sub.TelegramPaymentChargeID, &sub.ProviderPaymentChargeID, &sub.CreatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return Subscription{}, false, nil
+	}
+	if err != nil {
+		return Subscription{}, false, err
+	}
+	return sub, true, nil
+}
+
+// UpdateActiveUntil обновляет active_until для существующей подписки
+func (r *SubscriptionsRepo) UpdateActiveUntil(ctx context.Context, subscriptionID int64, newActiveUntil time.Time) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE subscriptions
+		SET active_until = $2
+		WHERE id = $1
+	`, subscriptionID, newActiveUntil)
+	return err
 }
 
 func nullStringToAny(ns sql.NullString) any {

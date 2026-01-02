@@ -23,6 +23,7 @@ type Server struct {
 	promocodesRepo      repo.PromocodesRepoInterface
 	promocodeUsagesRepo repo.PromocodeUsagesRepoInterface
 	feedbackRepo        repo.FeedbackRepoInterface
+	paymentsRepo        repo.PaymentsRepoInterface
 
 	clients map[string]outline.OutlineClientInterface
 }
@@ -44,6 +45,7 @@ func New(cfg config.Config, db *sql.DB) *Server {
 		promocodesRepo:      repo.NewPromocodesRepo(db),
 		promocodeUsagesRepo: repo.NewPromocodeUsagesRepo(db),
 		feedbackRepo:        repo.NewFeedbackRepo(db),
+		paymentsRepo:        repo.NewPaymentsRepo(db),
 		clients:             clients,
 	}
 }
@@ -74,6 +76,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/v1/issue-key", s.handleIssueKey)
 		r.Post("/v1/revoke-expired-keys", s.handleRevokeExpiredKeys)
 		r.Post("/v1/backup", s.handleBackup)
+		r.Post("/v1/subscription-renewal-reminder", s.handleSubscriptionRenewalReminder)
 	})
 
 	return r
