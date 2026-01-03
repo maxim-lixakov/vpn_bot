@@ -78,7 +78,11 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Ses
 			return nil
 		}
 
-		_, err := d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
+		// Проверяем, была ли у пользователя подписка ДО этой оплаты
+		subsResp, err := d.App.TelegramSubscriptions(ctx, s.TgUserID)
+		hasPreviousSubscription := err == nil && len(subsResp.Items) > 0
+
+		_, err = d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
 			TgUserID:    s.TgUserID,
 			Kind:        "vpn",
 			CountryCode: s.SelectedCountry,
@@ -96,7 +100,7 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Ses
 		}
 
 		// выдаём ключ + инструкцию с картинками
-		return IssueKeyNow(ctx, s, d)
+		return IssueKeyNowWithPreviousCheck(ctx, s, d, hasPreviousSubscription)
 
 	case d.Cfg.Payments.NewCountryPayload:
 		_, err := d.App.TelegramMarkPaid(ctx, appclient.TelegramMarkPaidReq{
@@ -131,6 +135,10 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Ses
 }
 
 func IssueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
+	return IssueKeyNowWithPreviousCheck(ctx, s, d, false)
+}
+
+func IssueKeyNowWithPreviousCheck(ctx context.Context, s router.Session, d router.Deps, hasPreviousSubscription bool) error {
 	if s.SelectedCountry == nil {
 		msg := tgbotapi.NewMessage(s.ChatID, "Не выбрана страна. Нажми /start")
 		msg.ReplyMarkup = menu.Keyboard()
@@ -192,6 +200,7 @@ func IssueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 	key := html.EscapeString(resp.AccessURL)
 	server := html.EscapeString(resp.ServerName)
 
+	// Отправляем информацию о ключе и где скачать приложения
 	msgText := fmt.Sprintf(
 		"<b>Сервер:</b> %s\n\n<b>Ключ:</b>\n<pre><code>%s</code></pre>\n<b>\nСкачать Outline Client:</b>\n• <a href=\"%s\">iOS — скачать</a>\n• <a href=\"%s\">Android — скачать</a>\n• <a href=\"%s\">Desktop (Windows/macOS/Linux) — скачать</a>",
 		server,
@@ -211,6 +220,14 @@ func IssueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 
 	baseDir := "internal/images"
 
+	if hasPreviousSubscription {
+		// Если уже была подписка - отправляем step4.png как step0.png с новым сообщением
+		if err := sendTextAndImage(d.Bot, s.ChatID, "Так как у вас уже была подписка, теперь чтобы добавить новую, в правом верхнем углу нажмите плюсик и следуйте инструкциям ниже.", filepath.Join(baseDir, "step4.png")); err != nil {
+			_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step4.png: "+err.Error()))
+		}
+	}
+
+	// Отправляем step1, step2, step3 для всех
 	if err := sendTextAndImage(d.Bot, s.ChatID, "После установки приложения, откройте его.", filepath.Join(baseDir, "step1.png")); err != nil {
 		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step1.png: "+err.Error()))
 	}
@@ -220,8 +237,12 @@ func IssueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
 	if err := sendTextAndImage(d.Bot, s.ChatID, "Нажмите «Подтвердить», а затем «Подключить».\nVPN должен работать — проверяйте.", filepath.Join(baseDir, "step3.png")); err != nil {
 		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step3.png: "+err.Error()))
 	}
-	if err := sendTextAndImage(d.Bot, s.ChatID, "Если вы купили больше одного VPN — в правом верхнем углу нажмите плюсик и повторите предыдущие шаги.", filepath.Join(baseDir, "step4.png")); err != nil {
-		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step4.png: "+err.Error()))
+
+	// step4.png отправляем только для первой подписки
+	if !hasPreviousSubscription {
+		if err := sendTextAndImage(d.Bot, s.ChatID, "Если вы купили больше одного VPN — в правом верхнем углу нажмите плюсик и повторите предыдущие шаги.", filepath.Join(baseDir, "step4.png")); err != nil {
+			_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step4.png: "+err.Error()))
+		}
 	}
 
 	return nil

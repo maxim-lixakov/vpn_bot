@@ -66,6 +66,10 @@ func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.S
 
 	// Если это выбор страны после промокода - обновляем подписку и выдаём ключ
 	if s.State == "CHOOSE_VPN_COUNTRY_PROMOCODE" {
+		// Проверяем, была ли у пользователя подписка ДО обновления промокода
+		subsRespBefore, err := d.App.TelegramSubscriptions(ctx, s.TgUserID)
+		hasPreviousSubscription := err == nil && len(subsRespBefore.Items) > 0
+
 		// Нет активной подписки - обновляем подписку от промокода и выдаём ключ
 		if err := d.App.TelegramUpdatePromocodeSubscription(ctx, s.TgUserID, country); err != nil {
 			msg := tgbotapi.NewMessage(s.ChatID, "Не смог обновить подписку: "+err.Error())
@@ -78,7 +82,7 @@ func (h CountryChosen) Handle(ctx context.Context, u tgbotapi.Update, s router.S
 		ss := s
 		ss.SelectedCountry = &country
 		_ = d.App.TelegramSetState(ctx, s.TgUserID, "MENU", nil)
-		return IssueKeyNow(ctx, ss, d)
+		return IssueKeyNowWithPreviousCheck(ctx, ss, d, hasPreviousSubscription)
 	}
 
 	// 2) no active subscription -> payment 150
