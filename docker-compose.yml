@@ -21,6 +21,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "7"
+        labels: "service"
 
   telegram-bot:
     build:
@@ -29,6 +37,12 @@ services:
     env_file: .env
     depends_on:
       - app
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "7"
+        labels: "service"
 
   periodic-tasks:
     build: ./periodic_tasks
@@ -38,6 +52,13 @@ services:
         condition: service_healthy
       app:
         condition: service_started
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "7"
+        labels: "service"
 
 volumes:
   pgdata:
+  docker_logs:
