@@ -164,7 +164,7 @@ func (s *Server) handleSendLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Формируем caption
 	caption := fmt.Sprintf(
-		"📋 Logs за последние 3 дня\n\n"+
+		"📋 Логи за последние 3 дня\n\n"+
 			"Период: %s - %s\n"+
 			"Размер: %.2f MB",
 		lastWeekStart.Format("02.01.2006 15:04"),
