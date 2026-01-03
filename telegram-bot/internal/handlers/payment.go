@@ -134,10 +134,6 @@ func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Ses
 	return nil
 }
 
-func IssueKeyNow(ctx context.Context, s router.Session, d router.Deps) error {
-	return IssueKeyNowWithPreviousCheck(ctx, s, d, false)
-}
-
 func IssueKeyNowWithPreviousCheck(ctx context.Context, s router.Session, d router.Deps, hasPreviousSubscription bool) error {
 	if s.SelectedCountry == nil {
 		msg := tgbotapi.NewMessage(s.ChatID, "Не выбрана страна. Нажми /start")
@@ -225,23 +221,23 @@ func IssueKeyNowWithPreviousCheck(ctx context.Context, s router.Session, d route
 		if err := sendTextAndImage(d.Bot, s.ChatID, "Так как у вас уже была подписка, теперь чтобы добавить новую, в правом верхнем углу нажмите плюсик и следуйте инструкциям ниже.", filepath.Join(baseDir, "step4.png")); err != nil {
 			_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step4.png: "+err.Error()))
 		}
-	}
-
-	// Отправляем step1, step2, step3 для всех
-	if err := sendTextAndImage(d.Bot, s.ChatID, "После установки приложения, откройте его.", filepath.Join(baseDir, "step1.png")); err != nil {
-		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step1.png: "+err.Error()))
-	}
-	if err := sendTextAndImage(d.Bot, s.ChatID, "Вставьте сюда скопированный ключ.", filepath.Join(baseDir, "step2.png")); err != nil {
-		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step2.png: "+err.Error()))
-	}
-	if err := sendTextAndImage(d.Bot, s.ChatID, "Нажмите «Подтвердить», а затем «Подключить».\nVPN должен работать — проверяйте.", filepath.Join(baseDir, "step3.png")); err != nil {
-		_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step3.png: "+err.Error()))
-	}
-
-	// step4.png отправляем только для первой подписки
-	if !hasPreviousSubscription {
-		if err := sendTextAndImage(d.Bot, s.ChatID, "Если вы купили больше одного VPN — в правом верхнем углу нажмите плюсик и повторите предыдущие шаги.", filepath.Join(baseDir, "step4.png")); err != nil {
-			_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step4.png: "+err.Error()))
+		// Пропускаем step1.png для пользователей с предыдущими подписками
+		if err := sendTextAndImage(d.Bot, s.ChatID, "Вставьте сюда скопированный ключ.", filepath.Join(baseDir, "step2.png")); err != nil {
+			_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step2.png: "+err.Error()))
+		}
+		if err := sendTextAndImage(d.Bot, s.ChatID, "Нажмите «Подтвердить», а затем «Подключить».\nVPN должен работать — проверяйте.", filepath.Join(baseDir, "step3.png")); err != nil {
+			_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step3.png: "+err.Error()))
+		}
+	} else {
+		// Для первой подписки отправляем step1, step2, step3
+		if err := sendTextAndImage(d.Bot, s.ChatID, "После установки приложения, откройте его.", filepath.Join(baseDir, "step1.png")); err != nil {
+			_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step1.png: "+err.Error()))
+		}
+		if err := sendTextAndImage(d.Bot, s.ChatID, "Вставьте сюда скопированный ключ.", filepath.Join(baseDir, "step2.png")); err != nil {
+			_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step2.png: "+err.Error()))
+		}
+		if err := sendTextAndImage(d.Bot, s.ChatID, "Нажмите «Подтвердить», а затем «Подключить».\nVPN должен работать — проверяйте.", filepath.Join(baseDir, "step3.png")); err != nil {
+			_, _ = d.Bot.Send(tgbotapi.NewMessage(s.ChatID, "Не смог отправить step3.png: "+err.Error()))
 		}
 	}
 
