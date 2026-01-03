@@ -77,6 +77,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/v1/revoke-expired-keys", s.handleRevokeExpiredKeys)
 		r.Post("/v1/backup", s.handleBackup)
 		r.Post("/v1/subscription-renewal-reminder", s.handleSubscriptionRenewalReminder)
+		r.Post("/v1/send-logs", s.handleSendLogs)
 	})
 
 	return r
