@@ -9,6 +9,7 @@ func CountryKeyboard() tgbotapi.InlineKeyboardMarkup {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🇰🇿 Kazakhstan", "country:kz"),
 			tgbotapi.NewInlineKeyboardButtonData("🇭🇰 Hong Kong", "country:hk"),
+			tgbotapi.NewInlineKeyboardButtonData("🇺🇸 USA", "country:us"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("⬅️ Меню", "menu"),
