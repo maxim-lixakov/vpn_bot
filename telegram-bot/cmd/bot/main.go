@@ -61,6 +61,7 @@ func main() {
 		handlers.FeedbackText{},
 		handlers.GetReferralCode{},
 		handlers.PaymentFlow{},
+		handlers.Broadcast{},
 	)
 
 	u := tgbotapi.NewUpdate(0)
