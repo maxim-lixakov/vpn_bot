@@ -40,15 +40,15 @@ func GetTaskSchedules() []TaskSchedule {
 	return []TaskSchedule{
 		{
 			TaskName: "backup",
-			Schedule: "0 0 0 * * *", // Daily at 00:00
+			Schedule: "0 0 18 * * *", // Daily at 18:00
 		},
 		{
 			TaskName: "revoke_expired_keys",
-			Schedule: "0 0 0 * * *", // Daily at 00:00
+			Schedule: "0 0 18 * * *", // Daily at 18:00
 		},
 		{
 			TaskName: "subscription_renewal_reminder",
-			Schedule: "0 0 0 * * *", // Daily at 00:00
+			Schedule: "0 0 18 * * *", // Daily at 18:00
 		},
 		{
 			TaskName: "send_logs",
