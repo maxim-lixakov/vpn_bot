@@ -6,6 +6,7 @@ import (
 	"html"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -26,6 +27,40 @@ func (h PaymentFlow) CanHandle(u tgbotapi.Update, s router.Session) bool {
 func (h PaymentFlow) Handle(ctx context.Context, u tgbotapi.Update, s router.Session, d router.Deps) error {
 	// 1) pre-checkout: must answer OK within ~10 seconds
 	if u.PreCheckoutQuery != nil {
+		payload := u.PreCheckoutQuery.InvoicePayload
+
+		// Check if this is a renewal payment
+		if strings.HasPrefix(payload, d.Cfg.Payments.VPNRenewalPayload+":") {
+			// Extract subscription_id from payload (format: "vpn_renewal_v1:subscription_id:country_code")
+			parts := strings.Split(payload, ":")
+			if len(parts) >= 2 {
+				if subscriptionID, err := strconv.ParseInt(parts[1], 10, 64); err == nil && subscriptionID > 0 {
+					// Validate that the renewal is still possible (key not revoked)
+					resp, err := d.App.ValidateRenewal(ctx, subscriptionID)
+					if err != nil {
+						// If we can't validate, reject the payment to be safe
+						pc := tgbotapi.PreCheckoutConfig{
+							PreCheckoutQueryID: u.PreCheckoutQuery.ID,
+							OK:                 false,
+							ErrorMessage:       "Ошибка проверки подписки. Попробуйте позже.",
+						}
+						_, _ = d.Bot.Request(pc)
+						return nil
+					}
+					if !resp.Valid {
+						// Key was revoked, reject the payment
+						pc := tgbotapi.PreCheckoutConfig{
+							PreCheckoutQueryID: u.PreCheckoutQuery.ID,
+							OK:                 false,
+							ErrorMessage:       resp.ErrorMessage,
+						}
+						_, _ = d.Bot.Request(pc)
+						return nil
+					}
+				}
+			}
+		}
+
 		pc := tgbotapi.PreCheckoutConfig{
 			PreCheckoutQueryID: u.PreCheckoutQuery.ID,
 			OK:                 true,
