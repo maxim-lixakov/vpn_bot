@@ -72,6 +72,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/v1/telegram/update-promocode-subscription", s.handleTelegramUpdatePromocodeSubscription)
 		r.Post("/v1/telegram/feedback", s.handleTelegramFeedback)
 		r.Post("/v1/telegram/referral-code", s.handleTelegramReferralCode)
+		r.Post("/v1/telegram/validate-renewal", s.handleValidateRenewal)
 
 		r.Post("/v1/issue-key", s.handleIssueKey)
 		r.Post("/v1/revoke-expired-keys", s.handleRevokeExpiredKeys)

@@ -14,6 +14,7 @@ import (
 type revokedSubscriptionInfo struct {
 	SubscriptionID int64  `json:"subscription_id"`
 	TgUserID       int64  `json:"tg_user_id"`
+	Username       string `json:"username,omitempty"`
 	CountryCode    string `json:"country_code"`
 }
 
@@ -83,7 +84,7 @@ func (s *Server) handleRevokeExpiredKeys(w http.ResponseWriter, r *http.Request)
 
 			// Отправляем уведомление пользователю о том, что его ключ истек
 			message := fmt.Sprintf(
-				"🔒 Ваш VPN ключ для страны %s был отозван, так как срок действия подписки истек.\n\nДля продолжения использования VPN необходимо продлить подписку.",
+				"🔒 Ваш VPN ключ для страны %s был отозван, так как срок действия подписки истек.\n\nДля продолжения использования VPN выберите страну заново через меню бота.",
 				countryName,
 			)
 			// Отправляем асинхронно, чтобы не блокировать процесс
@@ -94,9 +95,14 @@ func (s *Server) handleRevokeExpiredKeys(w http.ResponseWriter, r *http.Request)
 			}()
 
 			// Сохраняем информацию об отозванной подписке для отчета администратору
+			username := ""
+			if user.Username.Valid && user.Username.String != "" {
+				username = user.Username.String
+			}
 			revoked = append(revoked, revokedSubscriptionInfo{
 				SubscriptionID: sub.SubscriptionID,
 				TgUserID:       user.TgUserID,
+				Username:       username,
 				CountryCode:    strings.ToUpper(countryCode),
 			})
 		} else {
@@ -119,13 +125,14 @@ func (s *Server) handleRevokeExpiredKeys(w http.ResponseWriter, r *http.Request)
 		message.WriteString(fmt.Sprintf("🔒 Отозвано %d истекших VPN ключей:\n\n", revokedCount))
 
 		for i, rev := range revoked {
-			if rev.TgUserID > 0 {
-				message.WriteString(fmt.Sprintf("%d. Подписка #%d\n   Пользователь: %d\n   Страна: %s\n\n",
-					i+1, rev.SubscriptionID, rev.TgUserID, rev.CountryCode))
-			} else {
-				message.WriteString(fmt.Sprintf("%d. Подписка #%d\n   Пользователь: не найден\n   Страна: %s\n\n",
-					i+1, rev.SubscriptionID, rev.CountryCode))
+			userDisplay := "не найден"
+			if rev.Username != "" {
+				userDisplay = "@" + rev.Username
+			} else if rev.TgUserID > 0 {
+				userDisplay = fmt.Sprintf("%d", rev.TgUserID)
 			}
+			message.WriteString(fmt.Sprintf("%d. Подписка #%d\n   Пользователь: %s\n   Страна: %s\n\n",
+				i+1, rev.SubscriptionID, userDisplay, rev.CountryCode))
 		}
 
 		if len(errors) > 0 {
