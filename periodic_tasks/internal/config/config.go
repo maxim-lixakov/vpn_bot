@@ -54,7 +54,10 @@ func GetTaskSchedules() []TaskSchedule {
 			TaskName: "send_logs",
 			Schedule: "0 0 0 */3 * *", // Every 3 days at 00:00:00
 		},
-		// Add more tasks here as they are created
+		{
+			TaskName: "daily_stats",
+			Schedule: "0 15 18 * * *", // Daily at 18:15 UTC (21:15 UTC+3)
+		},
 	}
 }
 

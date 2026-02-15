@@ -27,6 +27,7 @@ type UsersRepoInterface interface {
 	GetAllUsers(ctx context.Context) ([]User, error)
 	GetUsersWithActiveSubscriptions(ctx context.Context, now time.Time) ([]User, error)
 	GetUsersWithoutSubscriptions(ctx context.Context) ([]User, error)
+	CountAll(ctx context.Context) (int, error)
 }
 
 func NewUsersRepo(db *sql.DB) UsersRepoInterface { return &UsersRepo{db: db} }
@@ -160,4 +161,11 @@ func (r *UsersRepo) GetUsersWithoutSubscriptions(ctx context.Context) ([]User, e
 		out = append(out, u)
 	}
 	return out, rows.Err()
+}
+
+// CountAll возвращает общее количество пользователей
+func (r *UsersRepo) CountAll(ctx context.Context) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count)
+	return count, err
 }
