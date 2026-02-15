@@ -44,6 +44,19 @@ type SubscriptionExpiringTomorrow struct {
 	ActiveUntil    time.Time
 }
 
+// SubscriptionWithUserInfo содержит информацию о подписке вместе с данными пользователя
+type SubscriptionWithUserInfo struct {
+	SubscriptionID int64
+	UserID         int64
+	TgUserID       int64
+	Username       sql.NullString
+	AmountMinor    int64
+	Currency       string
+	PaidAt         time.Time
+	ActiveUntil    time.Time
+	CountryCode    sql.NullString
+}
+
 type SubscriptionsRepoInterface interface {
 	GetActiveUntilFor(ctx context.Context, userID int64, kind string, country sql.NullString, now time.Time) (time.Time, bool, error)
 	HasAnyActiveSubscription(ctx context.Context, userID int64, kind string, now time.Time) (bool, error)
@@ -59,6 +72,9 @@ type SubscriptionsRepoInterface interface {
 	GetSubscriptionsExpiringTomorrow(ctx context.Context, todayStart, tomorrowEnd time.Time) ([]SubscriptionExpiringTomorrow, error)
 	GetByID(ctx context.Context, subscriptionID int64) (Subscription, bool, error)
 	UpdateActiveUntil(ctx context.Context, subscriptionID int64, newActiveUntil time.Time) error
+	CountActiveSubscriptions(ctx context.Context, now time.Time) (int, error)
+	GetSubscriptionsCreatedInPeriod(ctx context.Context, from, to time.Time) ([]SubscriptionWithUserInfo, error)
+	GetSubscriptionsExpiredInPeriod(ctx context.Context, from, to time.Time) ([]SubscriptionWithUserInfo, error)
 }
 
 func NewSubscriptionsRepo(db *sql.DB) SubscriptionsRepoInterface { return &SubscriptionsRepo{db: db} }
@@ -481,6 +497,81 @@ func (r *SubscriptionsRepo) UpdateActiveUntil(ctx context.Context, subscriptionI
 		WHERE id = $1
 	`, subscriptionID, newActiveUntil)
 	return err
+}
+
+// CountActiveSubscriptions возвращает количество активных подписок
+func (r *SubscriptionsRepo) CountActiveSubscriptions(ctx context.Context, now time.Time) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(DISTINCT user_id)
+		FROM subscriptions
+		WHERE status = 'paid' AND kind = 'vpn' AND active_until > $1
+	`, now).Scan(&count)
+	return count, err
+}
+
+// GetSubscriptionsCreatedInPeriod возвращает подписки, созданные в указанный период
+func (r *SubscriptionsRepo) GetSubscriptionsCreatedInPeriod(ctx context.Context, from, to time.Time) ([]SubscriptionWithUserInfo, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			s.id, s.user_id, u.tg_user_id, u.username,
+			s.amount_minor, s.currency, s.paid_at, s.active_until, s.country_code
+		FROM subscriptions s
+		INNER JOIN users u ON s.user_id = u.id
+		WHERE s.status = 'paid' AND s.kind = 'vpn'
+		  AND s.paid_at >= $1 AND s.paid_at < $2
+		ORDER BY s.paid_at DESC
+	`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []SubscriptionWithUserInfo
+	for rows.Next() {
+		var item SubscriptionWithUserInfo
+		err := rows.Scan(
+			&item.SubscriptionID, &item.UserID, &item.TgUserID, &item.Username,
+			&item.AmountMinor, &item.Currency, &item.PaidAt, &item.ActiveUntil, &item.CountryCode,
+		)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+// GetSubscriptionsExpiredInPeriod возвращает подписки, истекшие в указанный период
+func (r *SubscriptionsRepo) GetSubscriptionsExpiredInPeriod(ctx context.Context, from, to time.Time) ([]SubscriptionWithUserInfo, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			s.id, s.user_id, u.tg_user_id, u.username,
+			s.amount_minor, s.currency, s.paid_at, s.active_until, s.country_code
+		FROM subscriptions s
+		INNER JOIN users u ON s.user_id = u.id
+		WHERE s.status = 'paid' AND s.kind = 'vpn'
+		  AND s.active_until >= $1 AND s.active_until < $2
+		ORDER BY s.active_until DESC
+	`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []SubscriptionWithUserInfo
+	for rows.Next() {
+		var item SubscriptionWithUserInfo
+		err := rows.Scan(
+			&item.SubscriptionID, &item.UserID, &item.TgUserID, &item.Username,
+			&item.AmountMinor, &item.Currency, &item.PaidAt, &item.ActiveUntil, &item.CountryCode,
+		)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
 }
 
 func nullStringToAny(ns sql.NullString) any {
