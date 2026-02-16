@@ -53,6 +53,22 @@ func (s *Server) handleDailyStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 5. Промокоды — общая статистика использований
+	promocodesUsage, err := s.promocodesRepo.GetAllWithUsage(r.Context())
+	if err != nil {
+		log.Printf("failed to get promocodes usage: %v", err)
+		utils.WriteJSON(w, dailyStatsResp{Success: false, Error: err.Error()})
+		return
+	}
+
+	// 6. Реферальные переходы за последние 24 часа
+	referralUsages, err := s.promocodeUsagesRepo.GetReferralUsagesInPeriod(r.Context(), last24h, now)
+	if err != nil {
+		log.Printf("failed to get referral usages: %v", err)
+		utils.WriteJSON(w, dailyStatsResp{Success: false, Error: err.Error()})
+		return
+	}
+
 	// Формируем сообщение для администратора
 	var message strings.Builder
 	message.WriteString(fmt.Sprintf("📊 Ежедневная статистика бота\n%s\n\n", now.Format("02.01.2006 15:04 UTC")))
@@ -94,6 +110,24 @@ func (s *Server) handleDailyStats(w http.ResponseWriter, r *http.Request) {
 			userDisplay := getUserDisplay(sub.Username.String, sub.Username.Valid, sub.TgUserID)
 			message.WriteString(fmt.Sprintf("   %d. %s\n", i+1, userDisplay))
 		}
+	}
+
+	// Промокоды
+	message.WriteString(fmt.Sprintf("\n🎟 Промокоды (использовано): %d\n", len(promocodesUsage)))
+	for i, p := range promocodesUsage {
+		if p.IsReferral {
+			message.WriteString(fmt.Sprintf("   %d. %s — %d/%d раз 🔗\n", i+1, p.PromocodeName, p.TimesUsed, p.TimesToBeUsed))
+		} else {
+			message.WriteString(fmt.Sprintf("   %d. %s — %d/%d раз\n", i+1, p.PromocodeName, p.TimesUsed, p.TimesToBeUsed))
+		}
+	}
+
+	// Реферальные переходы за 24 часа
+	message.WriteString(fmt.Sprintf("\n🔗 Реферальных переходов за 24 часа: %d\n", len(referralUsages)))
+	for i, ref := range referralUsages {
+		referrer := getUserDisplay(ref.ReferrerUsername.String, ref.ReferrerUsername.Valid, ref.ReferrerTgUserID)
+		receiver := getUserDisplay(ref.ReceiverUsername.String, ref.ReceiverUsername.Valid, ref.ReceiverTgUserID)
+		message.WriteString(fmt.Sprintf("   %d. %s → %s\n", i+1, referrer, receiver))
 	}
 
 	// Отправляем сообщение администратору
