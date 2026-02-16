@@ -24,11 +24,19 @@ type Promocode struct {
 
 type PromocodesRepo struct{ db *sql.DB }
 
+type PromocodeWithUsage struct {
+	PromocodeName string
+	TimesUsed     int
+	TimesToBeUsed int
+	IsReferral    bool
+}
+
 type PromocodesRepoInterface interface {
 	GetByName(ctx context.Context, name string) (Promocode, bool, error)
 	IncrementUsage(ctx context.Context, promocodeID int64) error
 	DecrementUsage(ctx context.Context, promocodeID int64) error
 	GetOrCreateReferralCode(ctx context.Context, userID int64) (Promocode, error)
+	GetAllWithUsage(ctx context.Context) ([]PromocodeWithUsage, error)
 }
 
 func NewPromocodesRepo(db *sql.DB) PromocodesRepoInterface {
@@ -78,6 +86,29 @@ func (r *PromocodesRepo) DecrementUsage(ctx context.Context, promocodeID int64) 
 		WHERE id = $1
 	`, promocodeID)
 	return err
+}
+
+func (r *PromocodesRepo) GetAllWithUsage(ctx context.Context) ([]PromocodeWithUsage, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT promocode_name, times_used, times_to_be_used, promoted_by IS NOT NULL AS is_referral
+		FROM promocodes
+		WHERE times_used > 0
+		ORDER BY times_used DESC, promocode_name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []PromocodeWithUsage
+	for rows.Next() {
+		var p PromocodeWithUsage
+		if err := rows.Scan(&p.PromocodeName, &p.TimesUsed, &p.TimesToBeUsed, &p.IsReferral); err != nil {
+			return nil, err
+		}
+		result = append(result, p)
+	}
+	return result, rows.Err()
 }
 
 // generateReferralCodeHash генерирует стабильный 10-символьный хеш на основе userID
