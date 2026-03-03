@@ -10,6 +10,7 @@ import (
 	"vpn-periodic-tasks/internal/config"
 	"vpn-periodic-tasks/internal/scheduler"
 	"vpn-periodic-tasks/tasks/backup"
+	"vpn-periodic-tasks/tasks/cleanup_broken_subscriptions"
 	"vpn-periodic-tasks/tasks/daily_stats"
 	"vpn-periodic-tasks/tasks/revoke_expired_keys"
 	"vpn-periodic-tasks/tasks/send_logs"
@@ -32,6 +33,7 @@ func main() {
 
 	sched.RegisterTask(backup.New(appClient))
 	sched.RegisterTask(revoke_expired_keys.New(appClient))
+	sched.RegisterTask(cleanup_broken_subscriptions.New(appClient))
 	sched.RegisterTask(subscription_renewal_reminder.New(appClient))
 	sched.RegisterTask(send_logs.New(appClient))
 	sched.RegisterTask(daily_stats.New(appClient))

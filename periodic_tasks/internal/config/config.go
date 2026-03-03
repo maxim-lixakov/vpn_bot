@@ -47,6 +47,10 @@ func GetTaskSchedules() []TaskSchedule {
 			Schedule: "0 0 18 * * *", // Daily at 18:00
 		},
 		{
+			TaskName: "cleanup_broken_subscriptions",
+			Schedule: "0 30 18 * * *", // Daily at 18:30 (after revoke_expired_keys)
+		},
+		{
 			TaskName: "subscription_renewal_reminder",
 			Schedule: "0 0 18 * * *", // Daily at 18:00
 		},
