@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -43,17 +44,26 @@ func NewClient(baseURL string, tlsInsecure bool) OutlineClientInterface {
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, in any, out any) error {
+	startTime := time.Now()
+	fullURL := c.baseURL + path
+
+	// Log the outgoing request
+	log.Printf("[OUTLINE] → %s %s", method, fullURL)
+
 	var body io.Reader
 	if in != nil {
 		b, err := json.Marshal(in)
 		if err != nil {
+			log.Printf("[OUTLINE] ✗ %s %s: marshal request error: %v", method, path, err)
 			return fmt.Errorf("marshal request: %w", err)
 		}
 		body = bytes.NewReader(b)
+		log.Printf("[OUTLINE]   Request body: %s", string(b))
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, body)
 	if err != nil {
+		log.Printf("[OUTLINE] ✗ %s %s: new request error: %v", method, path, err)
 		return fmt.Errorf("new request: %w", err)
 	}
 	if in != nil {
@@ -61,19 +71,32 @@ func (c *Client) doJSON(ctx context.Context, method, path string, in any, out an
 	}
 
 	resp, err := c.hc.Do(req)
+	duration := time.Since(startTime)
+
 	if err != nil {
+		log.Printf("[OUTLINE] ✗ %s %s: http error after %v: %v", method, path, duration, err)
 		return fmt.Errorf("http do: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
+		log.Printf("[OUTLINE] ✗ %s %s: status %s after %v: %s", method, path, resp.Status, duration, strings.TrimSpace(string(b)))
 		return fmt.Errorf("outline api error: %s: %s", resp.Status, strings.TrimSpace(string(b)))
 	}
+
+	log.Printf("[OUTLINE] ✓ %s %s: status %s in %v", method, path, resp.Status, duration)
 
 	if out == nil {
 		io.Copy(io.Discard, resp.Body)
 		return nil
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+
+	err = json.NewDecoder(resp.Body).Decode(out)
+	if err != nil {
+		log.Printf("[OUTLINE] ✗ %s %s: decode response error: %v", method, path, err)
+		return err
+	}
+
+	return nil
 }

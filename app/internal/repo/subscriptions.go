@@ -75,6 +75,8 @@ type SubscriptionsRepoInterface interface {
 	CountActiveSubscriptions(ctx context.Context, now time.Time) (int, error)
 	GetSubscriptionsCreatedInPeriod(ctx context.Context, from, to time.Time) ([]SubscriptionWithUserInfo, error)
 	GetSubscriptionsExpiredInPeriod(ctx context.Context, from, to time.Time) ([]SubscriptionWithUserInfo, error)
+	GetActiveSubscriptionsWithoutAccessKey(ctx context.Context, now time.Time) ([]Subscription, error)
+	DeleteSubscription(ctx context.Context, subscriptionID int64) error
 }
 
 func NewSubscriptionsRepo(db *sql.DB) SubscriptionsRepoInterface { return &SubscriptionsRepo{db: db} }
@@ -579,4 +581,49 @@ func nullStringToAny(ns sql.NullString) any {
 		return nil
 	}
 	return ns.String
+}
+
+// GetActiveSubscriptionsWithoutAccessKey returns active subscriptions that have NULL access_key_id
+// These are problematic subscriptions where key creation or attachment failed
+func (r *SubscriptionsRepo) GetActiveSubscriptionsWithoutAccessKey(ctx context.Context, now time.Time) ([]Subscription, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			id, user_id, kind, country_code, access_key_id,
+			status, provider, amount_minor, currency, paid_at, active_until,
+			telegram_payment_charge_id, provider_payment_charge_id, created_at
+		FROM subscriptions
+		WHERE status = 'paid'
+		  AND kind = 'vpn'
+		  AND active_until > $1
+		  AND access_key_id IS NULL
+		ORDER BY paid_at ASC
+	`, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []Subscription
+	for rows.Next() {
+		var sub Subscription
+		err := rows.Scan(
+			&sub.ID, &sub.UserID, &sub.Kind, &sub.CountryCode, &sub.AccessKeyID,
+			&sub.Status, &sub.Provider, &sub.AmountMinor, &sub.Currency,
+			&sub.PaidAt, &sub.ActiveUntil,
+			&sub.TelegramPaymentChargeID, &sub.ProviderPaymentChargeID, &sub.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, sub)
+	}
+	return result, rows.Err()
+}
+
+// DeleteSubscription deletes a subscription by ID
+func (r *SubscriptionsRepo) DeleteSubscription(ctx context.Context, subscriptionID int64) error {
+	_, err := r.db.ExecContext(ctx, `
+		DELETE FROM subscriptions WHERE id = $1
+	`, subscriptionID)
+	return err
 }
