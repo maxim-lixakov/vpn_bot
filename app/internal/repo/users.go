@@ -27,6 +27,7 @@ type UsersRepoInterface interface {
 	GetAllUsers(ctx context.Context) ([]User, error)
 	GetUsersWithActiveSubscriptions(ctx context.Context, now time.Time) ([]User, error)
 	GetUsersWithoutSubscriptions(ctx context.Context) ([]User, error)
+	GetUsersCreatedInPeriod(ctx context.Context, from, to time.Time) ([]User, error)
 	CountAll(ctx context.Context) (int, error)
 }
 
@@ -147,6 +148,30 @@ func (r *UsersRepo) GetUsersWithoutSubscriptions(ctx context.Context) ([]User, e
 		WHERE s.id IS NULL
 		ORDER BY u.id
 	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.TgUserID, &u.Username, &u.FirstName, &u.LastName, &u.LanguageCode, &u.Phone, &u.CreatedAt, &u.LastActivityAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// GetUsersCreatedInPeriod возвращает пользователей, созданных в указанный период
+func (r *UsersRepo) GetUsersCreatedInPeriod(ctx context.Context, from, to time.Time) ([]User, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, tg_user_id, username, first_name, last_name, language_code, phone, created_at, last_activity_at
+		FROM users
+		WHERE created_at >= $1 AND created_at < $2
+		ORDER BY created_at DESC
+	`, from, to)
 	if err != nil {
 		return nil, err
 	}
