@@ -29,6 +29,14 @@ func (s *Server) handleDailyStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1.1 Новые пользователи за последние 24 часа
+	newUsers, err := s.usersRepo.GetUsersCreatedInPeriod(r.Context(), last24h, now)
+	if err != nil {
+		log.Printf("failed to get new users: %v", err)
+		utils.WriteJSON(w, dailyStatsResp{Success: false, Error: err.Error()})
+		return
+	}
+
 	// 2. Количество активных подписок
 	activeSubscriptions, err := s.subsRepo.CountActiveSubscriptions(r.Context(), now)
 	if err != nil {
@@ -75,6 +83,16 @@ func (s *Server) handleDailyStats(w http.ResponseWriter, r *http.Request) {
 
 	message.WriteString(fmt.Sprintf("👥 Всего пользователей: %d\n", totalUsers))
 	message.WriteString(fmt.Sprintf("✅ Активных подписок: %d\n\n", activeSubscriptions))
+
+	// Новые пользователи за 24 часа
+	message.WriteString(fmt.Sprintf("🆕 Новых пользователей за 24 часа: %d\n", len(newUsers)))
+	if len(newUsers) > 0 {
+		for i, u := range newUsers {
+			userDisplay := getUserDisplay(u.Username.String, u.Username.Valid, u.TgUserID)
+			message.WriteString(fmt.Sprintf("   %d. %s\n", i+1, userDisplay))
+		}
+	}
+	message.WriteString("\n")
 
 	// Подписки за 24 часа
 	message.WriteString(fmt.Sprintf("📝 Новых подписок за 24 часа: %d\n", len(recentSubscriptions)))
