@@ -29,7 +29,7 @@ func main() {
 
 		VPNPriceMinor:     utils.MustInt64(utils.GetEnv("PAYMENTS_VPN_PRICE_MINOR", "15000")),
 		VPNTtitle:         utils.GetEnv("PAYMENTS_VPN_TITLE", "VPN"),
-		VPNDescription:    utils.GetEnv("PAYMENTS_VPN_DESCRIPTION", "VPN подписка на 1 месяц"),
+		VPNDescription:    utils.GetEnv("PAYMENTS_VPN_DESCRIPTION", "Подписка на 1 месяц"),
 		VPNPayload:        utils.GetEnv("PAYMENTS_VPN_PAYLOAD", "vpn_sub_v1"),
 		VPNRenewalPayload: utils.GetEnv("PAYMENTS_VPN_RENEWAL_PAYLOAD", "vpn_renewal_v1"),
 
