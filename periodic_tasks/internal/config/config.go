@@ -37,32 +37,7 @@ func Load() (Config, error) {
 // Example: "0 */1 * * * *" means every minute at second 0
 // Example: "0 0 0 * * *" means daily at 00:00:00
 func GetTaskSchedules() []TaskSchedule {
-	return []TaskSchedule{
-		{
-			TaskName: "backup",
-			Schedule: "0 0 18 * * *", // Daily at 18:00
-		},
-		{
-			TaskName: "revoke_expired_keys",
-			Schedule: "0 0 18 * * *", // Daily at 18:00
-		},
-		{
-			TaskName: "cleanup_broken_subscriptions",
-			Schedule: "0 30 18 * * *", // Daily at 18:30 (after revoke_expired_keys)
-		},
-		{
-			TaskName: "subscription_renewal_reminder",
-			Schedule: "0 0 18 * * *", // Daily at 18:00
-		},
-		{
-			TaskName: "send_logs",
-			Schedule: "0 0 0 */3 * *", // Every 3 days at 00:00:00
-		},
-		{
-			TaskName: "daily_stats",
-			Schedule: "0 15 18 * * *", // Daily at 18:15 UTC (21:15 UTC+3)
-		},
-	}
+	return []TaskSchedule{}
 }
 
 func getenv(k, def string) string {
